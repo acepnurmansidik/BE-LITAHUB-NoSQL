@@ -76,7 +76,7 @@ crudServices.findAllPagination = async (
     const result = await model
       .find({ ...query, is_delete: { $ne: true } }, {})
       .populate(populateField)
-      .select(`${selectField} -updatedAt -is_delete`)
+      .select(`${selectField} -updated_at -is_delete`)
       .sort({ _id: -1 })
       .skip(skip)
       .limit(limit);
@@ -96,24 +96,28 @@ crudServices.create = async (model, { data }) => {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
-    const result = await model.create([data], { session });
+    const [result] = await model.create([data], { session });
 
     const log = {
-      type: "CREATE",
-      target_id: result[0]._id, // id of the created document
-      after: result[0],
+      target_id: result._id, // id of the created document
       source: model.collection.collectionName,
+      activities: [
+        {
+          type: "CREATE",
+          after: result,
+        },
+      ],
     };
 
     await logActionModel.create([log], { session });
     await session.commitTransaction();
 
-    delete result[0].is_delete;
-    delete result[0].updatedAt;
+    delete result.is_delete;
+    delete result.updatedAt;
     return {
       success: true,
       message: "Data created successfully!",
-      data: result[0],
+      data: result,
     };
   } catch (error) {
     await session.abortTransaction();
@@ -127,32 +131,40 @@ crudServices.create = async (model, { data }) => {
 crudServices.update = async (model, { id, data }) => {
   const session = await mongoose.startSession();
   session.startTransaction();
+
   try {
-    const [dataUpdate, dataOld] = await Promise.all([
-      model.findByIdAndUpdate(id, data, {
-        returnDocument: "after",
-        runValidators: true,
-        session,
-      }),
-      model.findOne({ _id: id }).lean(),
+    // 1. Ambil data lama dan dokumen log (tanpa .lean() pada log agar bisa di-save)
+    const [dataOld, dLogAction] = await Promise.all([
+      model.findById(id).lean().session(session),
+      logActionModel.findOne({ target_id: id }).session(session),
     ]);
 
-    if (!dataUpdate) throw new Error(`data not found!`);
+    if (!dataOld) throw new Error(`Data not found!`);
 
-    delete dataUpdate.is_delete;
-    delete dataUpdate.updatedAt;
+    // 2. Lakukan Update Data
+    const dataUpdate = await model.findByIdAndUpdate(id, data, {
+      new: true,
+      runValidators: true,
+      session,
+    });
 
-    const log = {
+    // 3. Konversi Mongoose Document ke objek biasa agar propertinya bisa di-delete
+    const dataUpdateObject = dataUpdate.toObject();
+    delete dataUpdateObject.is_delete;
+    delete dataUpdateObject.updatedAt;
+
+    // 4. Update Log (Langsung push dan save karena dLogAction dipastikan ada)
+    dLogAction.activities.push({
       type: "UPDATE",
-      target_id: dataUpdate._id, // id of the created document
       before: dataOld,
-      after: dataUpdate,
-      source: model.collection.collectionName,
-    };
+      after: dataUpdateObject,
+    });
 
-    await logActionModel.create([log], { session });
+    await dLogAction.save({ session }); // Wajib pakai session agar masuk transaksi
 
+    // 5. Commit Transaksi
     await session.commitTransaction();
+
     return {
       success: true,
       message: "Data updated successfully!",
@@ -170,33 +182,48 @@ crudServices.update = async (model, { id, data }) => {
 crudServices.delete = async (model, { id, data }) => {
   const session = await mongoose.startSession();
   session.startTransaction();
+
   try {
-    const result = await model.findOneAndUpdate(
-      { _id: id, is_delete: false },
-      { is_delete: true, ...data },
+    // 1. Ambil data lama dan dokumen log (tanpa .lean() pada log agar bisa di-save)
+    const [dExist, dLogAction] = await Promise.all([
+      model.findById(id).lean().session(session),
+      logActionModel.findOne({ target_id: id }).session(session),
+    ]);
+
+    if (!dExist) throw new Error(`Data not found!`);
+
+    // 2. Lakukan Update Data
+    const dataDelete = await model.findByIdAndUpdate(
+      id,
+      { is_delete: false },
       {
+        new: true,
         runValidators: true,
         session,
-        returnDocument: "after",
       },
     );
 
-    if (!result) throw new Error(`data with id: '${id}' not found!`);
+    // 3. Konversi Mongoose Document ke objek biasa agar propertinya bisa di-delete
+    const dataUpdateObject = dataDelete.toObject();
+    delete dataUpdateObject.is_delete;
+    delete dataUpdateObject.updatedAt;
 
-    const log = {
+    // 4. Update Log (Langsung push dan save karena dLogAction dipastikan ada)
+    dLogAction.activities.push({
       type: "DELETE",
-      target_id: result._id, // id of the created document
-      after: result,
-      source: model.collection.collectionName,
-    };
+      before: dExist,
+      after: dataUpdateObject,
+    });
 
-    await logActionModel.create([log], { session });
+    await dLogAction.save({ session }); // Wajib pakai session agar masuk transaksi
 
+    // 5. Commit Transaksi
     await session.commitTransaction();
+
     return {
       success: true,
-      message: "Data deleted successfully!",
-      data: result,
+      message: "Data updated successfully!",
+      data: dataDelete,
     };
   } catch (error) {
     await session.abortTransaction();

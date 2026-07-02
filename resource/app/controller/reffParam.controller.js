@@ -1,4 +1,4 @@
-const ReffparamModel = require("../models/reffParam.model");
+const ReffParamModel = require("../models/ReffParam.model");
 const crudServices = require("../../helper/crudService");
 const BadRequest = require("../../utils/errors/bad-request");
 
@@ -27,8 +27,8 @@ controller.index = async (req, res, next) => {
     #swagger.parameters['limit'] = { default: 10, description: 'limit' }
     #swagger.parameters['page'] = { default: 1, description: 'page' }
   */
-    const page_size = await ReffparamModel.countDocuments(query);
-    const result = await crudServices.findAllPagination(ReffparamModel, {
+    const page_size = await ReffParamModel.countDocuments(query);
+    const result = await crudServices.findAllPagination(ReffParamModel, {
       query,
       populateField,
       skip,
@@ -58,8 +58,8 @@ controller.create = async (req, res, next) => {
     payload.value = payload.value.toLowerCase();
 
     const [lastData, isExist] = await Promise.all([
-      ReffparamModel.findOne({ type: payload.type }).sort({ key: -1 }).lean(),
-      crudServices.findOne(ReffparamModel, {
+      ReffParamModel.findOne({ type: payload.type }).sort({ key: -1 }).lean(),
+      crudServices.findOne(ReffParamModel, {
         query: { value: payload.value },
       }),
     ]);
@@ -68,7 +68,7 @@ controller.create = async (req, res, next) => {
 
     payload.key = lastData ? lastData.key + 1 : 1;
 
-    const result = await crudServices.create(ReffparamModel, {
+    const result = await crudServices.create(ReffParamModel, {
       data: payload,
     });
 
@@ -100,7 +100,7 @@ controller.update = async (req, res, next) => {
 
     payload.type = payload.type.toLowerCase().replace(" ", "_");
     payload.value = payload.value.toLowerCase();
-    const data = crudServices.update(ReffparamModel, { id, data: payload });
+    const data = crudServices.update(ReffParamModel, { id, data: payload });
 
     res.status(201).json(data);
   } catch (err) {
@@ -122,7 +122,7 @@ controller.delete = async (req, res, next) => {
   */
     const id = req.params.id;
 
-    const result = await crudServices.delete(ReffparamModel, { id });
+    const result = await crudServices.delete(ReffParamModel, { id });
 
     res.status(200).json(result);
   } catch (err) {

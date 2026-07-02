@@ -1,6 +1,6 @@
 const crudServices = require("../../helper/crudService");
 const globalService = require("../../helper/global-func");
-const UsersModel = require("../models/users.model");
+const UsersModel = require("../models/Users.model");
 const controller = {};
 
 controller.getAllUser = async (req, res, next) => {
@@ -41,63 +41,140 @@ controller.getAllUser = async (req, res, next) => {
 };
 
 controller.createUser = async (req, res, next) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
   try {
-    /*
-    #swagger.tags = ['USERS / IAM']
-    #swagger.summary = 'User'
-    #swagger.description = 'untuk referensi group'
-    #swagger.parameters['obj'] = {
-      in: 'body',
-      description: 'Create role',
-      schema: { $ref: '#/definitions/BodyUserIAMSchema' }
-    }
-  */
-    const payload = req.body;
-    payload.name = payload.name.toLowerCase();
-    payload.slug = globalService.createSlug(payload.name);
+    const { email, password, role_id, username, ...profileData } = req.body;
 
-    const result = await crudServices.create(UsersModel, { data: payload });
+    // Validasi tunggal untuk efisiensi
+    const [existingUser, role] = await Promise.all([
+      AuthUserModel.findOne({ email, is_delete: false })
+        .session(session)
+        .lean(), // Hemat memori, lebih cepat
+      roleModel
+        .findById(role_id) // Lebih efisien daripada findOne({ _id: ... })
+        .where({ is_delete: false })
+        .session(session)
+        .lean(),
+    ]);
+
+    if (existingUser)
+      return res
+        .status(401)
+        .json({ status: false, message: "Email already registered!" });
+    if (!role)
+      return res
+        .status(404)
+        .json({ status: false, message: "Role not found!" });
+
+    // Enkripsi password
+    const hashedPassword = await bcrypt.hash(
+      password,
+      parseInt(process.env.SALT_ROUNDS || 12),
+    );
+
+    // Create Auth User
+    const [auth] = await AuthUserModel.create(
+      [{ email, username, password: hashedPassword }],
+      { session },
+    );
+
+    // Create User Profile
+    const [user] = await UsersModel.create(
+      [{ ...profileData, auth_id: auth._id, role_id }],
+      { session },
+    );
+
+    await session.commitTransaction();
+
     res.status(201).json({
       code: 201,
       success: true,
       message: "User created successfully!",
-      data: result,
+      data: user,
     });
   } catch (err) {
+    await session.abortTransaction();
     next(err);
+  } finally {
+    session.endSession();
   }
 };
 
 controller.updateUser = async (req, res, next) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
   try {
     /*
-    #swagger.tags = ['USERS / IAM']
-    #swagger.summary = 'User'
-    #swagger.description = 'untuk referensi group'
-    #swagger.parameters['id'] = { description: 'id role' }
-    #swagger.parameters['obj'] = {
-      in: 'body',
-      description: 'Update role',
-      schema: { $ref: '#/definitions/BodyUserIAMSchema' }
-    }
-  */
+      #swagger.tags = ['USERS / IAM']
+      #swagger.summary = 'Update User'
+      #swagger.parameters['id'] = { description: 'User ID (UsersModel ID)' }
+      #swagger.parameters['obj'] = {
+        in: 'body',
+        schema: { $ref: '#/definitions/BodyUserIAMSchema' }
+      }
+    */
     const { id } = req.params;
-    const payload = req.body;
-    payload.name = payload.name.toLowerCase();
-    payload.slug = globalService.createSlug(payload.value);
+    const { name, email, password, role_id, ...otherFields } = req.body;
 
-    const result = await crudServices.update(UsersModel, {
+    const isRoleExist = await roleModel.findOne({ _id: role_id }).lean();
+
+    if (!isRoleExist) {
+      return res
+        .status(404)
+        .json({ status: true, message: "Role not found!", data: null });
+    }
+
+    // 1. Cari data user & auth_id
+    const userProfile = await UsersModel.findById(id).session(session);
+    if (!userProfile) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found!" });
+    }
+
+    // 2. Update AuthUserModel (Email & Password jika ada)
+    const authUpdate = {};
+    if (email) authUpdate.email = email;
+    if (password) {
+      authUpdate.password = await bcrypt.hash(
+        password,
+        parseInt(jwt.saltEncrypt || 12),
+      );
+    }
+
+    if (Object.keys(authUpdate).length > 0) {
+      await AuthUserModel.findByIdAndUpdate(userProfile.auth_id, authUpdate, {
+        session,
+      });
+    }
+
+    // 3. Update UsersModel (Profile)
+    const updatedUser = await UsersModel.findByIdAndUpdate(
       id,
-      data: payload,
-    });
+      {
+        name: name || userProfile.name,
+        role_id: role_id || userProfile.role_id,
+        ...otherFields,
+      },
+      {
+        new: true,
+        session,
+      },
+    );
+
+    await session.commitTransaction();
     res.status(200).json({
       code: 200,
       success: true,
       message: "User updated successfully!",
-      data: result,
+      data: updatedUser,
     });
   } catch (err) {
+    await session.abortTransaction();
     next(err);
+  } finally {
+    await session.endSession();
   }
 };
 

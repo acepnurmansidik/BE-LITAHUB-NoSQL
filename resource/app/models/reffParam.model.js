@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const { model, Schema } = mongoose;
 
-const ReffparamModel = Schema(
+const ReffParamSchema = Schema(
   {
     key: {
       type: Number,
@@ -44,4 +44,4 @@ const ReffparamModel = Schema(
   },
 );
 
-module.exports = model("ReffParameter", ReffparamModel);
+module.exports = model("ReffParameter", ReffParamSchema);

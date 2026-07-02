@@ -1,10 +1,13 @@
+#!/usr/bin/env node
+
+/**
+ * Module dependencies.
+ */
 const app = require("../app");
 const debug = require("debug")("server-semina:server");
 const http = require("http");
-const socketManager = require("../resource/helper/socket-server");
-
-// import package db
-const db = require("../database");
+const connectDB = require("../config/database");
+const socketManager = require("../config/socket-server");
 
 /**
  * Get port from environment and store in Express.
@@ -17,31 +20,22 @@ app.set("port", port);
  */
 const server = http.createServer(app);
 
-/**
- * Initialize Socket.io with Redis Adapter
- * Kita panggil fungsi ini di sini agar 'io' menempel pada server yang benar.
- */
-socketManager(server);
-
-/**
- * Database Connection & Server Activation
- */
-
-// Menangani error koneksi MongoDB
-db.on("error", function (err) {
-  console.error("❌ Connection error: tidak bisa tersambung ke mongodb");
-});
-
-/**
- * Pastikan database terhubung sebelum server mulai mendengarkan (listen)
- */
-db.once("open", function () {
-  console.log("✅ Connected to MongoDB");
+async function Runner() {
+  /**
+   * Initialize Socket.io with Redis Adapter
+   * Kita panggil fungsi ini di sini agar 'io' menempel pada server yang benar.
+   */
+  socketManager(server);
+  await connectDB();
 
   // Menjalankan server
   server.listen(port);
   server.on("error", onError);
   server.on("listening", onListening);
+}
+
+Runner().catch((err) => {
+  console.error(`❌ Server crash on startup: ${err?.message || err}`);
 });
 
 /**
@@ -94,6 +88,6 @@ function onError(error) {
 function onListening() {
   const addr = server.address();
   const bind = typeof addr === "string" ? "pipe " + addr : "port " + addr.port;
-  console.log(`🚀 Server running on ${bind}`);
+  console.log(`🚀 Server is running on ${bind} 🚀\n`);
   debug("Listening on " + bind);
 }

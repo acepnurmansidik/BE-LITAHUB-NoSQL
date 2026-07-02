@@ -1,5 +1,5 @@
-const AuthUser = require("../app/models/auth.model");
-const UserModel = require("../app/models/users.model");
+const AuthUser = require("../app/models/Auth.model");
+const UserModel = require("../app/models/Users.model");
 const globalService = require("../helper/global-func");
 const ENV = require("../utils/config");
 const { UnauthenticatedError } = require("../utils/errors");

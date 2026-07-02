@@ -1,12 +1,26 @@
 const mongoose = require("mongoose");
 const { model, Schema } = mongoose;
 
-const LogActionModel = Schema(
+const LogActivitiesModel = Schema(
   {
     type: {
       type: String,
       enum: ["CREATE", "UPDATE", "DELETE"],
     },
+    before: {
+      type: Schema.Types.Mixed,
+      default: null,
+    },
+    after: {
+      type: Schema.Types.Mixed,
+      default: null,
+    },
+  },
+  { _id: false },
+);
+
+const LogActionModel = Schema(
+  {
     target_id: {
       type: Schema.Types.ObjectId,
     },
@@ -14,14 +28,18 @@ const LogActionModel = Schema(
       type: String,
       default: "",
     },
-    before: {
-      type: Schema.Types.Mixed,
-    },
-    after: {
-      type: Schema.Types.Mixed,
-    },
+    activities: [LogActivitiesModel],
   },
-  { timestamps: true, versionKey: false, new: true, collection: "log_actions" },
+  {
+    // PERBAIKAN DI SINI:
+    // Mengubah default nama timestamps Mongoose menjadi snake_case
+    timestamps: {
+      createdAt: "created_at",
+      updatedAt: "updated_at",
+    },
+    versionKey: false,
+    collection: "log_actions",
+  },
 );
 
 module.exports = model("LogAction", LogActionModel);

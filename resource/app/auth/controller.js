@@ -1,12 +1,13 @@
 const { jwt } = require("../../utils/config");
-const AuthUser = require("../models/auth");
-const UserSchema = require("../models/users.model");
+const AuthUser = require("../models/Auth.model");
+const UserSchema = require("../models/Users.model");
 const bcrypt = require("bcrypt");
 const { BadRequestError, NotFoundError } = require("../../utils/errors");
 const globalService = require("../../helper/global-func");
 const { default: mongoose } = require("mongoose");
 const crudServices = require("../../helper/crudService");
-const ReffParameter = require("../models/reffParam.model");
+const ReffParameter = require("../models/ReffParam.model");
+const LogActionModel = require("../models/LogAction.model");
 
 const controller = {};
 
@@ -49,13 +50,29 @@ controller.Register = async (req, res, next) => {
     const auth = new AuthUser({ ...payload });
     await auth.save({ session });
 
-    await UserSchema.create(
+    const [userResult] = await UserSchema.create(
       [
         {
           auth_id: auth._id,
           device_token: token,
           name: auth.username,
           role_id: defaultRole._id,
+        },
+      ],
+      { session },
+    );
+
+    await LogActionModel.create(
+      [
+        {
+          target_id: userResult._id,
+          source: UserSchema.collection.collectionName,
+          activities: [
+            {
+              type: "CREATE",
+              after: userResult,
+            },
+          ],
         },
       ],
       { session },

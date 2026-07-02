@@ -4,6 +4,7 @@ const dotENV = require("dotenv").config({
 
 const ENV = {
   urlDb: process.env.URL_MONGODB,
+  urlRedis: process.env.PUBLIC_REDIS_SERVER,
   jwt: {
     tokenExp: process.env.TOKEN_EXPIRED,
     secretKey: process.env.TOKEN_SECRET,
