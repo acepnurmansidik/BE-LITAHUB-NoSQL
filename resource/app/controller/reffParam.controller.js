@@ -1,4 +1,4 @@
-const ReffParamModel = require("../models/ReffParam.model");
+const ReffparamModel = require("../models/reffParam.model");
 const crudServices = require("../../helper/crudService");
 const BadRequest = require("../../utils/errors/bad-request");
 
@@ -6,9 +6,9 @@ const controller = {};
 
 controller.index = async (req, res, next) => {
   const query = {};
-  const { search, type, page, limit = 10 } = req.query;
+  const { search, page, limit = 10 } = req.query;
   const skip = (page - 1) * limit;
-  if (query.length) query.type = type;
+
   const arrFilter = [];
   if (search) {
     arrFilter.push({ value: { $regex: search, $options: "i" } });
@@ -27,13 +27,15 @@ controller.index = async (req, res, next) => {
     #swagger.parameters['limit'] = { default: 10, description: 'limit' }
     #swagger.parameters['page'] = { default: 1, description: 'page' }
   */
-    const page_size = await ReffParamModel.countDocuments(query);
-    const result = await crudServices.findAllPagination(ReffParamModel, {
-      query,
-      populateField,
-      skip,
-      limit,
-    });
+    const [page_size, result] = await Promise.all([
+      ReffparamModel.countDocuments(query),
+      crudServices.findAllPagination(ReffparamModel, {
+        query,
+        populateField,
+        skip,
+        limit,
+      }),
+    ]);
 
     res.status(200).json({ ...result, page_size, current_page: Number(page) });
   } catch (err) {
@@ -58,8 +60,8 @@ controller.create = async (req, res, next) => {
     payload.value = payload.value.toLowerCase();
 
     const [lastData, isExist] = await Promise.all([
-      ReffParamModel.findOne({ type: payload.type }).sort({ key: -1 }).lean(),
-      crudServices.findOne(ReffParamModel, {
+      ReffparamModel.findOne({ type: payload.type }).sort({ key: -1 }).lean(),
+      crudServices.findOne(ReffparamModel, {
         query: { value: payload.value },
       }),
     ]);
@@ -68,7 +70,7 @@ controller.create = async (req, res, next) => {
 
     payload.key = lastData ? lastData.key + 1 : 1;
 
-    const result = await crudServices.create(ReffParamModel, {
+    const result = await crudServices.create(ReffparamModel, {
       data: payload,
     });
 
@@ -100,7 +102,7 @@ controller.update = async (req, res, next) => {
 
     payload.type = payload.type.toLowerCase().replace(" ", "_");
     payload.value = payload.value.toLowerCase();
-    const data = crudServices.update(ReffParamModel, { id, data: payload });
+    const data = crudServices.update(ReffparamModel, { id, data: payload });
 
     res.status(201).json(data);
   } catch (err) {
@@ -122,7 +124,7 @@ controller.delete = async (req, res, next) => {
   */
     const id = req.params.id;
 
-    const result = await crudServices.delete(ReffParamModel, { id });
+    const result = await crudServices.delete(ReffparamModel, { id });
 
     res.status(200).json(result);
   } catch (err) {

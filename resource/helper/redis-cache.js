@@ -43,10 +43,11 @@ const clearCache = async (key) => {
  */
 const setCache = async ({ key, data, expiry = 3600 }) => {
   try {
-    return await global.redisClient.set(key, JSON.stringify(data), {
+    const res = await global.redisClient.set(key, JSON.stringify(data), {
       EX: expiry,
     });
     console.log(`💾 Cache Updated: ${key}`);
+    return res;
   } catch (error) {
     console.error("Redis Set Error:", error);
   }

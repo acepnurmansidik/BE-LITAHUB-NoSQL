@@ -195,7 +195,7 @@ crudServices.delete = async (model, { id, data }) => {
     // 2. Lakukan Update Data
     const dataDelete = await model.findByIdAndUpdate(
       id,
-      { is_delete: false },
+      { is_delete: true },
       {
         new: true,
         runValidators: true,

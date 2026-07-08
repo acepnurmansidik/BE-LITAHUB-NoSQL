@@ -15,22 +15,23 @@ controller.getAllRole = async (req, res, next) => {
   try {
     const query = {};
     const populateField = [];
-    const { search, type, page, limit = 10 } = req.query;
+    const { search, page, limit = 10 } = req.query;
     const skip = (page - 1) * limit;
-    if (query.length) query.type = type;
     const arrFilter = [];
     if (search) {
       arrFilter.push({ name: { $regex: search, $options: "i" } });
     }
     if (arrFilter.length) query["$or"] = arrFilter;
 
-    const page_size = await RoleModel.countDocuments(query);
-    const result = await crudServices.findAllPagination(RoleModel, {
-      query,
-      populateField,
-      skip,
-      limit,
-    });
+    const [page_size, result] = await Promise.all([
+      RoleModel.countDocuments(query),
+      crudServices.findAllPagination(RoleModel, {
+        query,
+        populateField,
+        skip,
+        limit,
+      }),
+    ]);
     res.status(200).json({ ...result, page_size, current_page: Number(page) });
   } catch (err) {
     next(err);

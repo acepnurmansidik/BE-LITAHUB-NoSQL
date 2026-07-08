@@ -1,5 +1,6 @@
 const crudServices = require("../../helper/crudService");
 const globalService = require("../../helper/global-func");
+const RoleModel = require("../models/Role.model");
 const UsersModel = require("../models/Users.model");
 const controller = {};
 
@@ -18,22 +19,24 @@ controller.getAllUser = async (req, res, next) => {
       { path: "role_id", model: "Role", select: "_id name path_access" },
       { path: "auth_id", model: "AuthUser", select: "_id username email" },
     ];
-    const { search, type, page, limit = 10 } = req.query;
+    const { search, page, limit = 10 } = req.query;
     const skip = (page - 1) * limit;
-    if (query.length) query.type = type;
+
     const arrFilter = [];
     if (search) {
       arrFilter.push({ name: { $regex: search, $options: "i" } });
     }
     if (arrFilter.length) query["$or"] = arrFilter;
 
-    const page_size = await UsersModel.countDocuments(query);
-    const result = await crudServices.findAllPagination(UsersModel, {
-      query,
-      populateField,
-      skip,
-      limit,
-    });
+    const [page_size, result] = await Promise.all([
+      UsersModel.countDocuments(query),
+      crudServices.findAllPagination(UsersModel, {
+        query,
+        populateField,
+        skip,
+        limit,
+      }),
+    ]);
     res.status(200).json({ ...result, page_size, current_page: Number(page) });
   } catch (err) {
     next(err);
@@ -51,8 +54,7 @@ controller.createUser = async (req, res, next) => {
       AuthUserModel.findOne({ email, is_delete: false })
         .session(session)
         .lean(), // Hemat memori, lebih cepat
-      roleModel
-        .findById(role_id) // Lebih efisien daripada findOne({ _id: ... })
+      RoleModel.findById(role_id) // Lebih efisien daripada findOne({ _id: ... })
         .where({ is_delete: false })
         .session(session)
         .lean(),
@@ -117,7 +119,7 @@ controller.updateUser = async (req, res, next) => {
     const { id } = req.params;
     const { name, email, password, role_id, ...otherFields } = req.body;
 
-    const isRoleExist = await roleModel.findOne({ _id: role_id }).lean();
+    const isRoleExist = await RoleModel.findOne({ _id: role_id }).lean();
 
     if (!isRoleExist) {
       return res
