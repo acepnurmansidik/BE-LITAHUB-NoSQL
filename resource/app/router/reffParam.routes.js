@@ -1,4 +1,4 @@
-const controller = require("../controller/reffParam.controller");
+const controller = require("../controller/ReffParam.controller");
 
 const router = require("express").Router();
 

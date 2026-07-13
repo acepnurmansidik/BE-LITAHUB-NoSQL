@@ -88,7 +88,13 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json());
-app.use(mongoSanitize()); // Tambahkan middleware untuk sanitasi input
+// Sanitasi input in-place (Express 5: req.query read-only, tidak boleh di-reassign)
+app.use((req, res, next) => {
+  ["body", "params", "query"].forEach((key) => {
+    if (req[key]) mongoSanitize.sanitize(req[key]);
+  });
+  next();
+});
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, "public")));

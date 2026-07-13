@@ -3,7 +3,6 @@ const mongoose = require("mongoose");
 const roleModel = require("../app/models/Role.model");
 const globalService = require("../helper/global-func");
 const UsersModel = require("../app/models/Users.model");
-const GenreModel = require("../app/models/Genre.model");
 const { USER_IAM } = require("../utils/etc/permission");
 const ModuleModel = require("../app/models/Module.model");
 const AuthUserModel = require("../app/models/Auth.model");
@@ -202,93 +201,4 @@ const runMainSeeder = async () => {
   }
 };
 
-const runSecondarySeeder = async () => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  const fullActions = {
-    view: true,
-    create: true,
-    update: true,
-    delete: true,
-    import: true,
-    export: true,
-    pdf: true,
-    whatsapp: true,
-  };
-
-  try {
-    // ==========================================
-    // SEEDER 1: PROSES MEMBUAT GENRES (BARU)
-    // ==========================================
-    // Daftar genre film umum dan dewasa (18+)
-    const genresToSeed = [
-      // === GENRE UMUM / MAINSTREAM ===
-      { name: "Action" },
-      { name: "Adventure" },
-      { name: "Animation" },
-      { name: "Comedy" },
-      { name: "Crime" },
-      { name: "Documentary" },
-      { name: "Drama" },
-      { name: "Family" },
-      { name: "Fantasy" },
-      { name: "History" },
-      { name: "Horror" },
-      { name: "Music" },
-      { name: "Mystery" },
-      { name: "Romance" },
-      { name: "Sci-Fi" },
-      { name: "Thriller" },
-      { name: "War" },
-      { name: "Western" },
-
-      // === SUB-GENRE POPULER & ANIME/MANGA ===
-      { name: "Isekai" },
-      { name: "Mecha" },
-      { name: "Slice of Life" },
-      { name: "Sports" },
-      { name: "Supernatural" },
-      { name: "Musical" },
-      { name: "Cyberpunk" },
-      { name: "Steampunk" },
-      { name: "Psychological" },
-      { name: "School" },
-      { name: "Shounen" },
-      { name: "Shoujo" },
-      { name: "Seinen" },
-    ];
-
-    for (const genreData of genresToSeed) {
-      // Standarisasi name menjadi lowercase sebelum di-slug (mengikuti aturan di controller genre Anda sebelumnya)
-      const formattedName = genreData.name.toLowerCase();
-      const slug = globalService.createSlug(formattedName);
-
-      await GenreModel.findOneAndUpdate(
-        { slug: slug }, // Cari berdasarkan slug uniknya
-        {
-          name: formattedName,
-          slug: slug,
-          is_adult: genreData.is_adult, // Otomatis terset true/false sesuai array di atas
-          is_new: false,
-          is_delete: false,
-        },
-        {
-          upsert: true,
-          returnDocument: "after",
-          session,
-          setDefaultsOnInsert: true,
-        },
-      );
-    }
-    console.log("✅ [SEEDERS] Genres upserted successfully!");
-
-    await session.commitTransaction();
-  } catch (error) {
-    if (session.inTransaction()) await session.abortTransaction();
-    console.error("❌ Seeder failed with error:", error);
-  } finally {
-    await session.endSession();
-  }
-};
-
-module.exports = { runMainSeeder, runSecondarySeeder };
+module.exports = { runMainSeeder };

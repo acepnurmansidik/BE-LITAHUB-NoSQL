@@ -1,5 +1,5 @@
 const Authchema = require("./auth.schema");
-const RefParameterSchema = require("./reffParameter.schema");
+const RefParameterSchema = require("./ReffParameter.schema");
 
 const GlobalSchema = {
   ...Authchema.Register,

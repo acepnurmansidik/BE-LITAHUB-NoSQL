@@ -1,37 +1,41 @@
 const mongoose = require("mongoose");
-const { model, Schema } = mongoose;
+const { Schema, model } = mongoose;
 
-const ReffParamSchema = Schema(
+const ReffParamSchema = new Schema(
   {
     key: {
       type: Number,
+      required: [true, "Key harus diisi"],
     },
     value: {
       type: String,
-      minlength: [1, "Panjang minimal 3 karakter"],
+      trim: true,
+      minlength: [3, "Panjang minimal 3 karakter"],
       required: [true, "Value harus diisi"],
       unique: true,
     },
     type: {
       type: String,
+      trim: true,
       minlength: [3, "Panjang type minimal 3 karakter"],
-      required: [true, "password harus diisi"],
+      required: [true, "Type harus diisi"],
     },
     description: {
       type: String,
-      required: [true, "password harus diisi"],
+      trim: true,
+      required: [true, "Description harus diisi"],
     },
     is_delete: {
       type: Boolean,
       default: false,
     },
     icon_id: {
-      type: mongoose.Types.ObjectId,
+      type: Schema.Types.ObjectId,
       ref: "Image",
       default: null,
     },
     parent_id: {
-      type: mongoose.Types.ObjectId,
+      type: Schema.Types.ObjectId,
       ref: "ReffParameter",
       default: null,
     },
@@ -39,9 +43,13 @@ const ReffParamSchema = Schema(
   {
     timestamps: true,
     versionKey: false,
-    new: true,
     collection: "reff_parameters",
   },
 );
 
-module.exports = model("ReffParameter", ReffParamSchema);
+// Optional: Index agar pencarian berdasarkan type lebih cepat
+ReffParamSchema.index({ type: 1 });
+ReffParamSchema.index({ parent_id: 1 });
+
+module.exports =
+  mongoose.models.ReffParameter || model("ReffParameter", ReffParamSchema);

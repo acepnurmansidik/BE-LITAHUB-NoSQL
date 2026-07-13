@@ -1,5 +1,5 @@
 const router = require("express").Router();
-const controller = require("../controller/module.controller");
+const controller = require("../controller/Module.controller");
 
 router.get("/", controller.getAllModule);
 router.post("/", controller.createModule);

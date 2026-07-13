@@ -1,4 +1,4 @@
-const ReffparamModel = require("../models/reffParam.model");
+const ReffparamModel = require("../models/ReffParam.model");
 const crudServices = require("../../helper/crudService");
 const BadRequest = require("../../utils/errors/bad-request");
 

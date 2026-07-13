@@ -43,7 +43,43 @@ controller.getAllUser = async (req, res, next) => {
   }
 };
 
+controller.getUserPermissionAccess = async (req, res, next) => {
+  /*
+    #swagger.tags = ['USERS / IAM']
+    #swagger.summary = 'User'
+    #swagger.description = 'untuk referensi group'
+     #swagger.parameters['id'] = { description: 'User ID (UsersModel ID)' }
+  */
+  try {
+    const populateField = [
+      {
+        path: "role_id",
+        model: "Role",
+        select: "_id name path_access has_access_module",
+      },
+      { path: "auth_id", model: "AuthUser", select: "_id username email" },
+    ];
+    const result = await UsersModel.findOne().populate(populateField).lean();
+    res.status(200).json({
+      success: true,
+      message: "User has been retrieved!",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 controller.createUser = async (req, res, next) => {
+  /*
+      #swagger.tags = ['USERS / IAM']
+      #swagger.summary = 'Create User'
+      #swagger.parameters['id'] = { description: 'User ID (UsersModel ID)' }
+      #swagger.parameters['obj'] = {
+        in: 'body',
+        schema: { $ref: '#/definitions/BodyUserIAMSchema' }
+      }
+    */
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
