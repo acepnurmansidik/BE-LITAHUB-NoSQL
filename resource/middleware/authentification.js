@@ -41,6 +41,11 @@ const AuthorizeUserLogin = async (req, res, next) => {
         path: "role_id",
         model: "Role",
         select: "_id name path_access",
+        populate: {
+          path: "path_access",
+          model: "PathAccess",
+          select: "path actions -_id",
+        },
       })
       .lean();
 

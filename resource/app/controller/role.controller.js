@@ -1,7 +1,52 @@
 const crudServices = require("../../helper/crudService");
 const globalService = require("../../helper/global-func");
 const RoleModel = require("../models/Role.model");
+const RoleModuleModel = require("../models/RoleModule.model");
+const PathAccessModel = require("../models/PathAccess.model");
+const logActionModel = require("../models/LogAction.model");
 const controller = {};
+
+// Bangun daftar path_access dari struktur has_access_module.
+// Ambil dari setiap permission (menu utama) tiap modul.
+const buildPathAccess = (modules = []) => {
+  const pathAccess = [];
+  for (const everyMod of modules) {
+    for (const everyPermission of everyMod.permission ?? []) {
+      pathAccess.push({
+        path: everyPermission.path,
+        actions: everyPermission.actions,
+      });
+    }
+  }
+  return pathAccess;
+};
+
+// Buat dokumen anak (role_modules & path_accesses) lalu kembalikan id-nya
+// untuk direferensikan dari dokumen Role.
+const createChildren = async (roleId, modules, session) => {
+  const moduleDocs = modules.map((m) => ({
+    role_id: roleId,
+    name: m.name,
+    title: m.title,
+    permission: m.permission ?? [],
+  }));
+
+  const pathDocs = buildPathAccess(modules).map((p) => ({
+    role_id: roleId,
+    path: p.path,
+    actions: p.actions,
+  }));
+
+  const [createdModules, createdPaths] = await Promise.all([
+    RoleModuleModel.create(moduleDocs, { session, ordered: true }),
+    PathAccessModel.create(pathDocs, { session, ordered: true }),
+  ]);
+
+  return {
+    moduleIds: createdModules.map((d) => d._id),
+    pathIds: createdPaths.map((d) => d._id),
+  };
+};
 
 controller.getAllRole = async (req, res, next) => {
   /*
@@ -14,7 +59,14 @@ controller.getAllRole = async (req, res, next) => {
   */
   try {
     const query = {};
-    const populateField = [];
+    const populateField = [
+      {
+        path: "has_access_module",
+        model: "RoleModule",
+        select: "-role_id -is_delete",
+      },
+      { path: "path_access", model: "PathAccess", select: "path actions -_id" },
+    ];
     const { search, page, limit = 10 } = req.query;
     const skip = (page - 1) * limit;
     const arrFilter = [];
@@ -52,9 +104,52 @@ controller.createRole = async (req, res, next) => {
   */
     const payload = req.body;
     payload.name = payload.name.toLowerCase();
-    payload.slug = globalService.createSlug(payload.name);
+    const slug = globalService.createSlug(payload.name);
+    const modules = Array.isArray(payload.has_access_module)
+      ? payload.has_access_module
+      : [];
 
-    const result = await crudServices.create(RoleModel, { data: payload });
+    const result = await crudServices.runWithOptionalTransaction(
+      async (session) => {
+        // 1. Buat dokumen Role dulu (arrays kosong) agar mendapat _id
+        const [role] = await RoleModel.create(
+          [
+            {
+              name: payload.name,
+              slug,
+              has_access_module: [],
+              path_access: [],
+            },
+          ],
+          { session },
+        );
+
+        // 2. Buat dokumen anak dengan role_id, lalu link balik ke Role
+        const { moduleIds, pathIds } = await createChildren(
+          role._id,
+          modules,
+          session,
+        );
+        role.has_access_module = moduleIds;
+        role.path_access = pathIds;
+        await role.save({ session });
+
+        // 3. Log hanya untuk dokumen Role
+        await logActionModel.create(
+          [
+            {
+              target_id: role._id,
+              source: RoleModel.collection.collectionName,
+              activities: [{ type: "CREATE", after: role.toObject() }],
+            },
+          ],
+          { session },
+        );
+
+        return role;
+      },
+    );
+
     res.status(201).json({
       code: 201,
       success: true,
@@ -82,9 +177,53 @@ controller.updateRole = async (req, res, next) => {
     const { id } = req.params;
     const payload = req.body;
     payload.name = payload.name.toLowerCase();
-    payload.slug = globalService.createSlug(payload.value);
+    const slug = globalService.createSlug(payload.name);
+    const modules = Array.isArray(payload.has_access_module)
+      ? payload.has_access_module
+      : [];
 
-    const result = await crudServices.update(RoleModel, { id, data: payload });
+    const result = await crudServices.runWithOptionalTransaction(
+      async (session) => {
+        const role = await RoleModel.findById(id).session(session);
+        if (!role) throw new Error("Data not found!");
+
+        const before = role.toObject();
+
+        // 1. Hapus dokumen anak lama milik role ini, lalu buat ulang
+        await Promise.all([
+          RoleModuleModel.deleteMany({ role_id: id }, { session }),
+          PathAccessModel.deleteMany({ role_id: id }, { session }),
+        ]);
+
+        const { moduleIds, pathIds } = await createChildren(
+          role._id,
+          modules,
+          session,
+        );
+
+        // 2. Update dokumen Role
+        role.name = payload.name;
+        role.slug = slug;
+        role.has_access_module = moduleIds;
+        role.path_access = pathIds;
+        await role.save({ session });
+
+        // 3. Log hanya untuk dokumen Role
+        await logActionModel.create(
+          [
+            {
+              target_id: role._id,
+              source: RoleModel.collection.collectionName,
+              activities: [{ type: "UPDATE", before, after: role.toObject() }],
+            },
+          ],
+          { session },
+        );
+
+        return role;
+      },
+    );
+
     res.status(200).json({
       code: 200,
       success: true,
@@ -105,7 +244,47 @@ controller.deleteRole = async (req, res, next) => {
     #swagger.parameters['id'] = { description: 'id role' }
   */
     const { id } = req.params;
-    const result = await crudServices.delete(RoleModel, { id });
+
+    const result = await crudServices.runWithOptionalTransaction(
+      async (session) => {
+        const role = await RoleModel.findById(id).session(session);
+        if (!role) throw new Error("Data not found!");
+
+        const before = role.toObject();
+
+        // Soft delete pada Role; anak (role_modules & path_accesses)
+        // ikut di-soft-delete agar konsisten.
+        role.is_delete = true;
+        await role.save({ session });
+
+        await Promise.all([
+          RoleModuleModel.updateMany(
+            { role_id: id },
+            { is_delete: true },
+            { session },
+          ),
+          PathAccessModel.updateMany(
+            { role_id: id },
+            { is_delete: true },
+            { session },
+          ),
+        ]);
+
+        await logActionModel.create(
+          [
+            {
+              target_id: role._id,
+              source: RoleModel.collection.collectionName,
+              activities: [{ type: "DELETE", before, after: role.toObject() }],
+            },
+          ],
+          { session },
+        );
+
+        return role;
+      },
+    );
+
     res.status(200).json({
       code: 200,
       success: true,

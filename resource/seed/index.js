@@ -1,38 +1,19 @@
 const bcrypt = require("bcryptjs");
-const mongoose = require("mongoose");
 const roleModel = require("../app/models/Role.model");
 const globalService = require("../helper/global-func");
 const UsersModel = require("../app/models/Users.model");
 const { USER_IAM } = require("../utils/etc/permission");
 const ModuleModel = require("../app/models/Module.model");
 const AuthUserModel = require("../app/models/Auth.model");
+const RoleModuleModel = require("../app/models/RoleModule.model");
+const PathAccessModel = require("../app/models/PathAccess.model");
+const crudServices = require("../helper/crudService");
 
 const runMainSeeder = async () => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  const fullActions = {
-    view: true,
-    create: true,
-    update: true,
-    delete: true,
-    import: true,
-    export: true,
-    pdf: true,
-    whatsapp: true,
-  };
-
   try {
-    const defaultActions = [
-      "view",
-      "create",
-      "update",
-      "delete",
-      "import",
-      "export",
-      "pdf",
-      "whatsapp",
-    ];
-
+    // Jalankan di dalam transaction bila didukung; jika server standalone,
+    // otomatis fallback tanpa session (semua operasi di bawah idempoten).
+    await crudServices.runWithOptionalTransaction(async (session) => {
     // ==========================================
     // SEEDER 1: PROSES MEMBUAT MODULE
     // ==========================================
@@ -66,7 +47,9 @@ const runMainSeeder = async () => {
     // SEEDER 2: PROSES MEMBUAT ROLES
     // ==========================================
 
-    const allModules = await ModuleModel.find({}).session(session);
+    const allModules = await ModuleModel.find({ is_delete: false }).session(
+      session,
+    );
 
     const roleSlug = "super-ultraman";
     const superUltramanData = {
@@ -153,11 +136,40 @@ const runMainSeeder = async () => {
       }
     }
 
+    // Upsert Role tanpa arrays — has_access_module & path_access kini
+    // berada di collection terpisah dan direferensikan lewat ObjectId.
     const role = await roleModel.findOneAndUpdate(
       { slug: roleSlug },
-      { $set: superUltramanData },
-      { upsert: true, returnDocument: "after", session }, // Gunakan returnDocument: 'after'
+      { $set: { name: superUltramanData.name, slug: roleSlug } },
+      { upsert: true, returnDocument: "after", session },
     );
+
+    // Re-seed dokumen anak: hapus lama lalu buat ulang agar idempoten.
+    await Promise.all([
+      RoleModuleModel.deleteMany({ role_id: role._id }, { session }),
+      PathAccessModel.deleteMany({ role_id: role._id }, { session }),
+    ]);
+
+    const [createdModules, createdPaths] = await Promise.all([
+      RoleModuleModel.create(
+        superUltramanData.has_access_module.map((m) => ({
+          role_id: role._id,
+          ...m,
+        })),
+        { session, ordered: true },
+      ),
+      PathAccessModel.create(
+        superUltramanData.path_access.map((p) => ({
+          role_id: role._id,
+          ...p,
+        })),
+        { session, ordered: true },
+      ),
+    ]);
+
+    role.has_access_module = createdModules.map((d) => d._id);
+    role.path_access = createdPaths.map((d) => d._id);
+    await role.save({ session });
     console.log("✅ [SEEDERS] Role upserted successfully!");
 
     // ==========================================
@@ -191,13 +203,9 @@ const runMainSeeder = async () => {
     );
 
     console.log("✅ [SEEDERS] Super Admin account & Role linked successfully!");
-
-    await session.commitTransaction();
+    });
   } catch (error) {
-    if (session.inTransaction()) await session.abortTransaction();
     console.error("❌ Seeder failed with error:", error);
-  } finally {
-    await session.endSession();
   }
 };
 

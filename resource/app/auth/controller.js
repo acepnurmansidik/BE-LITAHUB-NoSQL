@@ -122,17 +122,26 @@ controller.Login = async (req, res, next) => {
     }
 
     const populateField = [
-      { path: "role_id", model: "Role", select: "_id name path_access" },
+      {
+        path: "role_id",
+        model: "Role",
+        select: "_id name path_access",
+        populate: {
+          path: "path_access",
+          model: "PathAccess",
+          select: "path actions -_id",
+        },
+      },
     ];
-
-    if (!users) {
-      throw new NotFoundError("User profile data not found!");
-    }
 
     const users = await UserSchema.findOne({ auth_id: isAvailable.data._id })
       .select("-auth_id -device_token -created_at -updated_at")
       .populate(populateField)
       .lean(); // .lean() mengubah data menjadi objek literal JS biasa
+
+    if (!users) {
+      throw new NotFoundError("User profile data not found!");
+    }
 
     const token = globalService.generateJwtToken({
       email,
@@ -145,7 +154,7 @@ controller.Login = async (req, res, next) => {
       data: {
         ...users,
         token,
-        path_access: path_access ?? [],
+        path_access: users.role_id?.path_access ?? [],
       },
     });
   } catch (err) {

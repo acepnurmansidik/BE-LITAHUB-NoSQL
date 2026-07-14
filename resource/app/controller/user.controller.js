@@ -16,7 +16,16 @@ controller.getAllUser = async (req, res, next) => {
   try {
     const query = {};
     const populateField = [
-      { path: "role_id", model: "Role", select: "_id name path_access" },
+      {
+        path: "role_id",
+        model: "Role",
+        select: "_id name path_access",
+        populate: {
+          path: "path_access",
+          model: "PathAccess",
+          select: "path actions -_id",
+        },
+      },
       { path: "auth_id", model: "AuthUser", select: "_id username email" },
     ];
     const { search, page, limit = 10 } = req.query;
@@ -56,6 +65,18 @@ controller.getUserPermissionAccess = async (req, res, next) => {
         path: "role_id",
         model: "Role",
         select: "_id name path_access has_access_module",
+        populate: [
+          {
+            path: "path_access",
+            model: "PathAccess",
+            select: "path actions -_id",
+          },
+          {
+            path: "has_access_module",
+            model: "RoleModule",
+            select: "-role_id -is_delete",
+          },
+        ],
       },
       { path: "auth_id", model: "AuthUser", select: "_id username email" },
     ];

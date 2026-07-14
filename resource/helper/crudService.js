@@ -3,6 +3,44 @@ const logActionModel = require("../app/models/LogAction.model");
 
 const crudServices = {};
 
+// Deteksi error MongoDB "transaction tidak didukung" (server standalone,
+// bukan replica set / sharded cluster).
+const isTransactionUnsupported = (error) => {
+  const msg = error?.message || "";
+  return (
+    error?.code === 20 ||
+    error?.code === 263 ||
+    /Transaction numbers are only allowed/i.test(msg) ||
+    /sharded cluster can start a new transaction/i.test(msg) ||
+    /replica set member or mongos/i.test(msg)
+  );
+};
+
+// Jalankan `work(session)` di dalam transaction. Jika server tidak mendukung
+// transaction, ulangi tanpa session (operasi transaksional gagal di awal
+// sebelum ada penulisan, jadi fallback aman dari partial write).
+const runWithOptionalTransaction = async (work) => {
+  const session = await mongoose.startSession();
+  try {
+    session.startTransaction();
+    const result = await work(session);
+    await session.commitTransaction();
+    return result;
+  } catch (error) {
+    try {
+      await session.abortTransaction();
+    } catch (_) {
+      /* abaikan: transaksi mungkin belum aktif */
+    }
+    if (isTransactionUnsupported(error)) {
+      return work(null);
+    }
+    throw new Error(error.message);
+  } finally {
+    await session.endSession();
+  }
+};
+
 // FIND BY ID
 crudServices.findOneById = async (
   model,
@@ -93,9 +131,7 @@ crudServices.findAllPagination = async (
 
 // CREATE
 crudServices.create = async (model, { data }) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-  try {
+  return runWithOptionalTransaction(async (session) => {
     const [result] = await model.create([data], { session });
 
     const log = {
@@ -110,7 +146,6 @@ crudServices.create = async (model, { data }) => {
     };
 
     await logActionModel.create([log], { session });
-    await session.commitTransaction();
 
     delete result.is_delete;
     delete result.updatedAt;
@@ -119,20 +154,12 @@ crudServices.create = async (model, { data }) => {
       message: "Data created successfully!",
       data: result,
     };
-  } catch (error) {
-    await session.abortTransaction();
-    throw new Error(error.message);
-  } finally {
-    await session.endSession();
-  }
+  });
 };
 
 // UPDATE
 crudServices.update = async (model, { id, data }) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
-  try {
+  return runWithOptionalTransaction(async (session) => {
     // 1. Ambil data lama dan dokumen log (tanpa .lean() pada log agar bisa di-save)
     const [dataOld, dLogAction] = await Promise.all([
       model.findById(id).lean().session(session),
@@ -143,7 +170,7 @@ crudServices.update = async (model, { id, data }) => {
 
     // 2. Lakukan Update Data
     const dataUpdate = await model.findByIdAndUpdate(id, data, {
-      new: true,
+      returnDocument: "after",
       runValidators: true,
       session,
     });
@@ -153,37 +180,41 @@ crudServices.update = async (model, { id, data }) => {
     delete dataUpdateObject.is_delete;
     delete dataUpdateObject.updatedAt;
 
-    // 4. Update Log (Langsung push dan save karena dLogAction dipastikan ada)
-    dLogAction.activities.push({
+    // 4. Update Log. Jika log belum ada (mis. data dari seeder), buat baru;
+    //    jika sudah ada, cukup push activity dan simpan.
+    const activity = {
       type: "UPDATE",
       before: dataOld,
       after: dataUpdateObject,
-    });
+    };
 
-    await dLogAction.save({ session }); // Wajib pakai session agar masuk transaksi
-
-    // 5. Commit Transaksi
-    await session.commitTransaction();
+    if (dLogAction) {
+      dLogAction.activities.push(activity);
+      await dLogAction.save({ session }); // Wajib pakai session agar masuk transaksi
+    } else {
+      await logActionModel.create(
+        [
+          {
+            target_id: id,
+            source: model.collection.collectionName,
+            activities: [activity],
+          },
+        ],
+        { session },
+      );
+    }
 
     return {
       success: true,
       message: "Data updated successfully!",
       data: dataUpdate,
     };
-  } catch (error) {
-    await session.abortTransaction();
-    throw new Error(error.message);
-  } finally {
-    await session.endSession();
-  }
+  });
 };
 
 // DELETE
 crudServices.delete = async (model, { id, data }) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
-
-  try {
+  return runWithOptionalTransaction(async (session) => {
     // 1. Ambil data lama dan dokumen log (tanpa .lean() pada log agar bisa di-save)
     const [dExist, dLogAction] = await Promise.all([
       model.findById(id).lean().session(session),
@@ -197,7 +228,7 @@ crudServices.delete = async (model, { id, data }) => {
       id,
       { is_delete: true },
       {
-        new: true,
+        returnDocument: "after",
         runValidators: true,
         session,
       },
@@ -208,29 +239,38 @@ crudServices.delete = async (model, { id, data }) => {
     delete dataUpdateObject.is_delete;
     delete dataUpdateObject.updatedAt;
 
-    // 4. Update Log (Langsung push dan save karena dLogAction dipastikan ada)
-    dLogAction.activities.push({
+    const activity = {
       type: "DELETE",
       before: dExist,
       after: dataUpdateObject,
-    });
+    };
 
-    await dLogAction.save({ session }); // Wajib pakai session agar masuk transaksi
-
-    // 5. Commit Transaksi
-    await session.commitTransaction();
+    if (dLogAction) {
+      dLogAction.activities.push(activity);
+      await dLogAction.save({ session }); // Wajib pakai session agar masuk transaksi
+    } else {
+      await logActionModel.create(
+        [
+          {
+            target_id: id,
+            source: model.collection.collectionName,
+            activities: [activity],
+          },
+        ],
+        { session },
+      );
+    }
 
     return {
       success: true,
       message: "Data updated successfully!",
       data: dataDelete,
     };
-  } catch (error) {
-    await session.abortTransaction();
-    throw new Error(error.message);
-  } finally {
-    await session.endSession();
-  }
+  });
 };
+
+// Diekspor agar controller yang butuh alur multi-collection (mis. Role)
+// dapat memakai transaction + fallback yang sama.
+crudServices.runWithOptionalTransaction = runWithOptionalTransaction;
 
 module.exports = crudServices;

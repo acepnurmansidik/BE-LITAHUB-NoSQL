@@ -2,46 +2,6 @@ const mongoose = require("mongoose");
 const globalService = require("../../helper/global-func");
 const { model, Schema } = mongoose;
 
-// Sub-schema untuk children menu (sub-menu)
-const RoleMenuDetailSchema = new Schema(
-  {
-    name: { type: String, required: true },
-    path: { type: String, required: true },
-    actions: { type: Map, of: Boolean, default: {} }, // Record<string, boolean>
-  },
-  { _id: false },
-);
-
-// Sub-schema untuk permission (menu utama)
-const RolePermissionSchema = new Schema(
-  {
-    icon: { type: String, required: true },
-    menu_name: { type: String, required: true },
-    path: { type: String, required: true },
-    actions: { type: Map, of: Boolean, default: {} }, // Record<string, boolean>
-    children: [RoleMenuDetailSchema],
-  },
-  { _id: false },
-);
-
-// Sub-schema untuk modul
-const RoleModuleSchema = new Schema(
-  {
-    name: { type: String, required: true },
-    title: { type: String, required: true },
-    permission: [RolePermissionSchema],
-  },
-  { _id: false },
-);
-
-const PathAccessSchema = new Schema(
-  {
-    path: { type: String, required: true },
-    actions: { type: Map, of: Boolean, default: {} }, // Record<string, boolean>
-  },
-  { _id: false },
-);
-
 const RoleSchema = new Schema(
   {
     name: {
@@ -57,9 +17,11 @@ const RoleSchema = new Schema(
       trim: true,
       lowercase: true,
     },
-    // Menyesuaikan dengan interface: has_access_module
-    has_access_module: [RoleModuleSchema],
-    path_access: [PathAccessSchema],
+    // Referensi ke collection tersendiri (dinormalisasi)
+    has_access_module: [
+      { type: Schema.Types.ObjectId, ref: "RoleModule" },
+    ],
+    path_access: [{ type: Schema.Types.ObjectId, ref: "PathAccess" }],
 
     is_delete: { type: Boolean, required: true, default: false },
     created_by: { type: mongoose.Types.ObjectId, ref: "User", default: null },
@@ -91,7 +53,6 @@ RoleSchema.pre("validate", function (next) {
   if (!this.slug && this.name) {
     this.slug = globalService.createSlug(this.name);
   }
-  next();
 });
 
-module.exports = model("Role", RoleSchema);
+module.exports = mongoose.models.Role || model("Role", RoleSchema);
