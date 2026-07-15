@@ -16,15 +16,18 @@ const SysUserModel = Schema(
     },
     role_id: {
       type: mongoose.Types.ObjectId,
-      ref: "ReffParameter",
+      ref: "Role",
       require: true,
-      unique: true,
     },
     device_token: {
       type: String,
       required: [false, "Device token can't be empty"],
       default: "",
     },
+
+    is_delete: { type: Boolean, required: true, default: false },
+    created_by: { type: mongoose.Types.ObjectId, ref: "User", default: null },
+    updated_by: { type: mongoose.Types.ObjectId, ref: "User", default: null },
   },
   {
     timestamps: true,

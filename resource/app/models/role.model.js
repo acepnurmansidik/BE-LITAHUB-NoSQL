@@ -18,9 +18,7 @@ const RoleSchema = new Schema(
       lowercase: true,
     },
     // Referensi ke collection tersendiri (dinormalisasi)
-    has_access_module: [
-      { type: Schema.Types.ObjectId, ref: "RoleModule" },
-    ],
+    has_access_module: [{ type: Schema.Types.ObjectId, ref: "RoleModule" }],
     path_access: [{ type: Schema.Types.ObjectId, ref: "PathAccess" }],
 
     is_delete: { type: Boolean, required: true, default: false },
@@ -34,25 +32,14 @@ const RoleSchema = new Schema(
   },
 );
 
-/**
- * 🔥 Perbaikan ERR_REQUIRE_ESM
- * Menggunakan Dynamic Import agar CommonJS dapat membaca package ESM
- */
-import("mongoose-unique-validator")
-  .then((module) => {
-    const uniqueValidator = module.default;
-    RoleSchema.plugin(uniqueValidator, {
-      message: "Role name must be unique!",
-    });
-  })
-  .catch((err) => {
-    console.error("❌ Gagal memuat mongoose-unique-validator:", err);
-  });
+// Keunikan slug sudah dijamin oleh `unique: true` (index unik MongoDB),
+// jadi tidak perlu plugin tambahan.
 
 RoleSchema.pre("validate", function (next) {
   if (!this.slug && this.name) {
     this.slug = globalService.createSlug(this.name);
   }
+  // next();
 });
 
 module.exports = mongoose.models.Role || model("Role", RoleSchema);

@@ -11,6 +11,25 @@ const crudServices = require("../helper/crudService");
 
 const runMainSeeder = async () => {
   try {
+    // Pastikan collection sudah ada SEBELUM transaksi, agar insert pertama
+    // di dalam transaksi tidak memicu pembuatan collection yang bisa
+    // menyebabkan konflik catalog ("Unable to write ... due to catalog changes").
+    await Promise.all(
+      [
+        ModuleModel,
+        roleModel,
+        RoleModuleModel,
+        PathAccessModel,
+        AuthUserModel,
+        UsersModel,
+      ].map((m) =>
+        m.createCollection().catch((err) => {
+          // 48 = NamespaceExists -> collection sudah ada, aman diabaikan
+          if (err?.code !== 48) throw err;
+        }),
+      ),
+    );
+
     // Jalankan di dalam transaction bila didukung; jika server standalone,
     // otomatis fallback tanpa session (semua operasi di bawah idempoten).
     await crudServices.runWithOptionalTransaction(async (session) => {

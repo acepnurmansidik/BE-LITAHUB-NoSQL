@@ -16,26 +16,59 @@ const isTransactionUnsupported = (error) => {
   );
 };
 
-// Jalankan `work(session)` di dalam transaction. Jika server tidak mendukung
-// transaction, ulangi tanpa session (operasi transaksional gagal di awal
-// sebelum ada penulisan, jadi fallback aman dari partial write).
-const runWithOptionalTransaction = async (work) => {
+// Cek label error MongoDB (driver menaruh label di error.errorLabels /
+// error.hasErrorLabel()).
+const hasErrorLabel = (error, label) => {
+  if (typeof error?.hasErrorLabel === "function") {
+    return error.hasErrorLabel(label);
+  }
+  return Array.isArray(error?.errorLabels) && error.errorLabels.includes(label);
+};
+
+// Error transaksi yang sifatnya sementara dan disarankan untuk di-retry
+// (mis. konflik catalog saat collection dibuat, write conflict).
+const isRetryableTransactionError = (error) => {
+  const msg = error?.message || "";
+  return (
+    hasErrorLabel(error, "TransientTransactionError") ||
+    hasErrorLabel(error, "UnknownTransactionCommitResult") ||
+    /please retry/i.test(msg) ||
+    /catalog changes/i.test(msg) ||
+    /WriteConflict/i.test(msg)
+  );
+};
+
+// Jalankan `work(session)` di dalam transaction. Perilaku:
+//  - Server tidak mendukung transaction (standalone) -> ulangi tanpa session.
+//  - Error transaksi sementara (TransientTransactionError, konflik catalog)
+//    -> retry seluruh transaksi hingga `maxRetries` kali.
+const runWithOptionalTransaction = async (work, maxRetries = 5) => {
   const session = await mongoose.startSession();
   try {
-    session.startTransaction();
-    const result = await work(session);
-    await session.commitTransaction();
-    return result;
-  } catch (error) {
-    try {
-      await session.abortTransaction();
-    } catch (_) {
-      /* abaikan: transaksi mungkin belum aktif */
+    let attempt = 0;
+    while (true) {
+      attempt += 1;
+      try {
+        session.startTransaction();
+        const result = await work(session);
+        await session.commitTransaction();
+        return result;
+      } catch (error) {
+        try {
+          if (session.inTransaction()) await session.abortTransaction();
+        } catch (_) {
+          /* abaikan: transaksi mungkin belum aktif */
+        }
+
+        if (isTransactionUnsupported(error)) {
+          return work(null);
+        }
+        if (isRetryableTransactionError(error) && attempt < maxRetries) {
+          continue; // ulangi seluruh transaksi
+        }
+        throw new Error(error.message);
+      }
     }
-    if (isTransactionUnsupported(error)) {
-      return work(null);
-    }
-    throw new Error(error.message);
   } finally {
     await session.endSession();
   }

@@ -1,8 +1,11 @@
+const { default: mongoose } = require("mongoose");
 const crudServices = require("../../helper/crudService");
 const globalService = require("../../helper/global-func");
 const RoleModel = require("../models/Role.model");
+const AuthUserModel = require("../models/Auth.model");
 const UsersModel = require("../models/Users.model");
 const controller = {};
+const bcrypt = require("bcrypt");
 
 controller.getAllUser = async (req, res, next) => {
   /*
@@ -14,7 +17,7 @@ controller.getAllUser = async (req, res, next) => {
     #swagger.parameters['page'] = { default: 1, description: 'page' }
   */
   try {
-    const query = {};
+    const query = { is_delete: false };
     const populateField = [
       {
         path: "role_id",
@@ -108,12 +111,9 @@ controller.createUser = async (req, res, next) => {
 
     // Validasi tunggal untuk efisiensi
     const [existingUser, role] = await Promise.all([
-      AuthUserModel.findOne({ email, is_delete: false })
-        .session(session)
-        .lean(), // Hemat memori, lebih cepat
+      AuthUserModel.findOne({ email, is_delete: false }).lean(), // Hemat memori, lebih cepat
       RoleModel.findById(role_id) // Lebih efisien daripada findOne({ _id: ... })
         .where({ is_delete: false })
-        .session(session)
         .lean(),
     ]);
 
@@ -140,7 +140,7 @@ controller.createUser = async (req, res, next) => {
 
     // Create User Profile
     const [user] = await UsersModel.create(
-      [{ ...profileData, auth_id: auth._id, role_id }],
+      [{ ...profileData, auth_id: auth._id, role_id, name: username }],
       { session },
     );
 
@@ -174,7 +174,7 @@ controller.updateUser = async (req, res, next) => {
       }
     */
     const { id } = req.params;
-    const { name, email, password, role_id, ...otherFields } = req.body;
+    const { username, email, password, role_id, ...otherFields } = req.body;
 
     const isRoleExist = await RoleModel.findOne({ _id: role_id }).lean();
 
@@ -185,7 +185,7 @@ controller.updateUser = async (req, res, next) => {
     }
 
     // 1. Cari data user & auth_id
-    const userProfile = await UsersModel.findById(id).session(session);
+    const userProfile = await UsersModel.findById(id);
     if (!userProfile) {
       return res
         .status(404)
@@ -212,7 +212,7 @@ controller.updateUser = async (req, res, next) => {
     const updatedUser = await UsersModel.findByIdAndUpdate(
       id,
       {
-        name: name || userProfile.name,
+        name: username,
         role_id: role_id || userProfile.role_id,
         ...otherFields,
       },
