@@ -6,8 +6,10 @@ const userRouter = require("../resource/app/router/user.routes");
 const roleRouter = require("../resource/app/router/role.routes");
 const moduleRouter = require("../resource/app/router/module.routes");
 const refparamRouter = require("../resource/app/router/reffParam.routes");
+const appConfigRouter = require("../resource/app/router/appConfig.routes");
 const AuthorizeUserLogin = require("../resource/middleware/authentification");
 
+router.use("/app-configs", appConfigRouter);
 router.use("/auth", authRouter);
 router.use("/role", roleRouter);
 router.use("/users", userRouter);
