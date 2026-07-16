@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
+const { model, Schema } = mongoose;
 
-const AppConfigSchema = new mongoose.Schema(
+const AppConfigSchema = Schema(
   {
     // Menentukan platform: web, android, atau ios
     platform: {
@@ -49,5 +50,4 @@ const AppConfigSchema = new mongoose.Schema(
   { timestamps: true, versionKey: false, collection: "app_config" },
 );
 
-module.exports =
-  mongoose.models.AppConfig || model("AppConfig", AppConfigSchema);
+module.exports = model("AppConfig", AppConfigSchema);

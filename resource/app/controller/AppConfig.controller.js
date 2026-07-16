@@ -21,13 +21,26 @@ controller.getLatestVersion = async (req, res, next) => {
       });
     }
 
-    const result = await AppConfigModel.findOne({ platform }).lean();
+    const query = { platform };
+    const populateField = [];
+    const { search, page, limit = 10 } = req.query;
+    const skip = (page - 1) * limit;
+    const arrFilter = [];
+    if (search) {
+      arrFilter.push({ name: { $regex: search, $options: "i" } });
+    }
+    if (arrFilter.length) query["$or"] = arrFilter;
 
-    res.status(200).json({
-      success: true,
-      message: "Latest version configuration retrieved successfully.",
-      data: result,
-    });
+    const [page_size, result] = await Promise.all([
+      AppConfigModel.countDocuments(query),
+      crudServices.findAllPagination(AppConfigModel, {
+        query,
+        populateField,
+        skip,
+        limit,
+      }),
+    ]);
+    res.status(200).json({ ...result, page_size, current_page: Number(page) });
   } catch (error) {
     next(error);
   }
@@ -70,15 +83,10 @@ controller.updateVersion = async (req, res, next) => {
     #swagger.tags = ['Application Configuration']
     #swagger.summary = 'Update platform version config'
     #swagger.description = 'Upgrade the platform to a newer semantic version and automatically create a release log entry.'
-    #swagger.parameters['body'] = {
-        in: 'body',
-        description: 'Version update payload',
-        required: true,
-        schema: {
-            platform: 'android',
-            latest_version: '1.0.0',
-            maintenance_message: 'Minor bug fixes and stability improvements.'
-        }
+   #swagger.parameters['obj'] = {
+      in: 'body',
+      description: 'Version update payload',
+      schema: { $ref: '#/definitions/BodyAppConfigSchema' }
     }
   */
   try {
@@ -120,6 +128,76 @@ controller.updateVersion = async (req, res, next) => {
           message: `The provided version is identical to the current active version (${currentConfig.latest_version}).`,
         });
       }
+    }
+
+    // 4. FIX BUG: Gunakan findOneAndUpdate dengan returnDocument agar mendapatkan objek data terupdate
+    const updatedConfig = await AppConfigModel.findOneAndUpdate(
+      { platform },
+      { $set: { latest_version, maintenance_message } },
+      { upsert: true, returnDocument: "after" }, // Menggunakan returnDocument standar Mongoose 9+
+    ).lean();
+
+    // 5. Simpan catatan riwayat menggunakan data riil hasil update database
+    await AppReleaseLogModel.create({
+      platform: updatedConfig.platform,
+      version_released: updatedConfig.latest_version,
+      released_by: req.login?.user_id ?? null,
+      release_notes:
+        updatedConfig.maintenance_message ||
+        maintenance_message ||
+        "No release notes provided.",
+    });
+
+    res.status(200).json({
+      success: true,
+      message: `Platform ${platform} version has been successfully updated to ${latest_version}.`,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// 4. DIBERSIHKAN & DISESUAIKAN: Membuat versi dan otomatis mencatat log riwayat
+controller.createVersion = async (req, res, next) => {
+  /*
+    #swagger.tags = ['Application Configuration']
+    #swagger.summary = 'Create platform version config'
+    #swagger.description = 'Upgrade the platform to a newer semantic version and automatically create a release log entry.'
+    #swagger.parameters['obj'] = {
+      in: 'body',
+      description: 'Version create payload',
+      schema: { $ref: '#/definitions/BodyAppConfigSchema' }
+    }
+  */
+  try {
+    const { platform, latest_version, maintenance_message } = req.body;
+
+    // 1. Validate required fields
+    if (!platform || !latest_version) {
+      return res.status(400).json({
+        success: false,
+        message: "Platform and latest_version fields are required.",
+      });
+    }
+
+    // 2. Validate semantic versioning format
+    if (!semver.valid(latest_version)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid version format. Please use Semantic Versioning rules (e.g., 1.0.0).",
+      });
+    }
+
+    // 3. Find current platform version configuration
+    const currentConfig = await AppConfigModel.findOne({ platform }).lean();
+
+    if (currentConfig) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Duplicate platform detected. Only one configuration per platform is allowed.",
+      });
     }
 
     // 4. FIX BUG: Gunakan findOneAndUpdate dengan returnDocument agar mendapatkan objek data terupdate

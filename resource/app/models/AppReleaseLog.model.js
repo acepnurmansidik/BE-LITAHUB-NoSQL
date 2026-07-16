@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
+const { model, Schema } = mongoose;
 
-const AppReleaseLogSchema = new mongoose.Schema(
+const AppReleaseLogSchema = Schema(
   {
     // Platform yang merilis versi baru
     platform: {
@@ -52,5 +53,4 @@ const AppReleaseLogSchema = new mongoose.Schema(
 // Indeks untuk mempermudah pencarian riwayat per platform berdasarkan versi terbaru
 AppReleaseLogSchema.index({ platform: 1, createdAt: -1 });
 
-module.exports =
-  mongoose.models.AppReleaseLog || model("AppReleaseLog", AppReleaseLogSchema);
+module.exports = model("AppReleaseLog", AppReleaseLogSchema);

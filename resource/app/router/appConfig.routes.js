@@ -1,11 +1,12 @@
 const router = require("express").Router();
 const AuthorizeUserLogin = require("../../middleware/authentification");
-const controller = require("../controller/Root.controller");
+const controller = require("../controller/AppConfig.controller");
 
-router.get("/app-configs/latest", controller.getLatestVersion);
-router.get("/app-configs/release-history", controller.getReleaseHistory);
+router.get("/latest", controller.getLatestVersion);
+router.get("/release-history", controller.getReleaseHistory);
 
 router.use(AuthorizeUserLogin);
-router.put("/app-configs", controller.updateVersion);
+router.put("/", controller.updateVersion);
+router.post("/", controller.createVersion);
 
 module.exports = router;
