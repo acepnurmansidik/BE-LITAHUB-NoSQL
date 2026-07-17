@@ -7,7 +7,6 @@ const AppConfigSchema = Schema(
     platform: {
       type: String,
       required: true,
-      enum: ["web", "android", "ios"],
       unique: true,
     },
 

@@ -7,7 +7,6 @@ const AppReleaseLogSchema = Schema(
     platform: {
       type: String,
       required: true,
-      enum: ["web", "android", "ios"],
     },
 
     // Versi yang dirilis pada saat itu (e.g., "1.1.0")
@@ -45,9 +44,7 @@ const AppReleaseLogSchema = Schema(
       default: null,
     },
   },
-  {
-    timestamps: { createdAt: true, updatedAt: false }, // Hanya butuh waktu kapan log dibuat
-  },
+  { timestamps: true, versionKey: false, collection: "app_release_logs" },
 );
 
 // Indeks untuk mempermudah pencarian riwayat per platform berdasarkan versi terbaru

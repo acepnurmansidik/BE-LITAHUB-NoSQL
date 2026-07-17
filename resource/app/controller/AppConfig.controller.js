@@ -1,11 +1,11 @@
 const semver = require("semver");
 const AppConfigModel = require("../models/AppConfig.model");
 const AppReleaseLogModel = require("../models/AppReleaseLog.model");
+const crudServices = require("../../helper/crudService");
 
 const controller = {};
 
-// 1. DIBERSIHKAN & DISESUAIKAN: Mengambil konfigurasi aktif versi terbaru
-controller.getLatestVersion = async (req, res, next) => {
+controller.getAllVersionPlatforms = async (req, res, next) => {
   /*
     #swagger.tags = ['Application Configuration']
     #swagger.summary = 'Get active latest version'
@@ -13,15 +13,7 @@ controller.getLatestVersion = async (req, res, next) => {
     #swagger.parameters['platform'] = { in: 'query', required: true, type: 'string', description: 'Platform name (e.g., android, ios)' }
   */
   try {
-    const { platform } = req.query;
-    if (!platform) {
-      return res.status(400).json({
-        success: false,
-        message: "Platform query parameter is required.",
-      });
-    }
-
-    const query = { platform };
+    const query = {};
     const populateField = [];
     const { search, page, limit = 10 } = req.query;
     const skip = (page - 1) * limit;
@@ -46,6 +38,27 @@ controller.getLatestVersion = async (req, res, next) => {
   }
 };
 
+// 1. DIBERSIHKAN & DISESUAIKAN: Mengambil konfigurasi aktif versi terbaru
+controller.getLatestVersion = async (req, res, next) => {
+  /*
+    #swagger.tags = ['Application Configuration']
+    #swagger.summary = 'Get active latest version'
+    #swagger.description = 'Retrieve the current active and latest version configuration for a specific platform.'
+    #swagger.parameters['type'] = { in: 'query', required: true, type: 'string', description: 'Platform name (e.g., android, ios)' }
+  */
+  try {
+    const { type } = req.query;
+    const result = await AppConfigModel.findOne({ platform: type }).lean();
+    res.status(200).json({
+      success: true,
+      message: "Release history logs retrieved successfully.",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // 2. DIBERSIHKAN & DISESUAIKAN: Mengambil seluruh riwayat rilis versi
 controller.getReleaseHistory = async (req, res, next) => {
   /*
@@ -64,7 +77,7 @@ controller.getReleaseHistory = async (req, res, next) => {
     }
 
     const result = await AppReleaseLogModel.find({ platform })
-      .sort({ createdAt: -1 }) // Urutkan dari rilis terbaru
+      .sort({ created_at: -1 }) // Urutkan dari rilis terbaru
       .lean();
 
     res.status(200).json({
@@ -90,7 +103,12 @@ controller.updateVersion = async (req, res, next) => {
     }
   */
   try {
-    const { platform, latest_version, maintenance_message } = req.body;
+    const {
+      platform,
+      latest_version,
+      maintenance_message,
+      status_maintenance,
+    } = req.body;
 
     // 1. Validate required fields
     if (!platform || !latest_version) {
@@ -121,8 +139,17 @@ controller.updateVersion = async (req, res, next) => {
         });
       }
 
-      // Check if the incoming version is identical to the current one
-      if (semver.eq(latest_version, currentConfig.latest_version)) {
+      // Check if the incoming version is identical to the current one.
+      // Abaikan penolakan ini bila yang berubah hanya status_maintenance
+      // (mis. toggle mode maintenance tanpa menaikkan versi).
+      const isStatusMaintenanceChanged =
+        status_maintenance !== undefined &&
+        status_maintenance !== currentConfig.status_maintenance;
+
+      if (
+        semver.eq(latest_version, currentConfig.latest_version) &&
+        !isStatusMaintenanceChanged
+      ) {
         return res.status(400).json({
           success: false,
           message: `The provided version is identical to the current active version (${currentConfig.latest_version}).`,
@@ -133,12 +160,13 @@ controller.updateVersion = async (req, res, next) => {
     // 4. FIX BUG: Gunakan findOneAndUpdate dengan returnDocument agar mendapatkan objek data terupdate
     const updatedConfig = await AppConfigModel.findOneAndUpdate(
       { platform },
-      { $set: { latest_version, maintenance_message } },
+      { $set: { latest_version, maintenance_message, status_maintenance } },
       { upsert: true, returnDocument: "after" }, // Menggunakan returnDocument standar Mongoose 9+
     ).lean();
 
     // 5. Simpan catatan riwayat menggunakan data riil hasil update database
     await AppReleaseLogModel.create({
+      status_maintenance,
       platform: updatedConfig.platform,
       version_released: updatedConfig.latest_version,
       released_by: req.login?.user_id ?? null,
@@ -160,7 +188,7 @@ controller.updateVersion = async (req, res, next) => {
 // 4. DIBERSIHKAN & DISESUAIKAN: Membuat versi dan otomatis mencatat log riwayat
 controller.createVersion = async (req, res, next) => {
   /*
-    #swagger.tags = ['Application Configuration']
+    #swagger.tags = ['Application Configuratiorsn']
     #swagger.summary = 'Create platform version config'
     #swagger.description = 'Upgrade the platform to a newer semantic version and automatically create a release log entry.'
     #swagger.parameters['obj'] = {
