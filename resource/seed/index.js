@@ -10,6 +10,216 @@ const PathAccessModel = require("../app/models/PathAccess.model");
 const crudServices = require("../helper/crudService");
 const AppConfigModel = require("../app/models/AppConfig.model");
 const AppReleaseLogModel = require("../app/models/AppReleaseLog.model");
+const ComponentFormulaModel = require("../app/models/ComponentFormula.model");
+const CalculatedFormulaModel = require("../app/models/CalculatedFormula.model");
+
+// ============================================================
+// SEEDER: COMPONENT FORMULA (data master rate)
+// Fungsi terpisah — dipanggil SEBELUM seedCalculatedFormula karena
+// calculated formula mereferensikan komponen-komponen di sini.
+// Idempoten: upsert by slug.
+// ============================================================
+const COMPONENT_SEED = [
+  {
+    name: "Base Salary",
+    slug: "base-salary",
+    rate_type: "FIXED",
+    fixed_rate: 5000000,
+    decimal_place: 2,
+  },
+  {
+    name: "Transport Allowance",
+    slug: "transport-allowance",
+    rate_type: "FIXED",
+    fixed_rate: 500000,
+    decimal_place: 2,
+  },
+  {
+    name: "Meal Allowance",
+    slug: "meal-allowance",
+    rate_type: "FIXED",
+    fixed_rate: 300000,
+    decimal_place: 2,
+  },
+  {
+    name: "Tax Rate",
+    slug: "tax-rate",
+    rate_type: "FIXED",
+    fixed_rate: 0.05,
+    decimal_place: 2,
+  },
+  {
+    name: "Performance Bonus",
+    slug: "performance-bonus",
+    rate_type: "CALCULATED",
+    calculated_rate: 1000000,
+    decimal_place: 2,
+  },
+  {
+    name: "Overtime Rate",
+    slug: "overtime-rate",
+    rate_type: "FIXED",
+    fixed_rate: 75000,
+    decimal_place: 0,
+  },
+];
+
+const seedComponentFormula = async (session) => {
+  for (const comp of COMPONENT_SEED) {
+    await ComponentFormulaModel.findOneAndUpdate(
+      { slug: comp.slug },
+      {
+        $set: {
+          name: comp.name,
+          slug: comp.slug,
+          rate_type: comp.rate_type,
+          fixed_rate: comp.fixed_rate ?? 0,
+          calculated_rate: comp.calculated_rate ?? 0,
+          decimal_place: comp.decimal_place ?? 2,
+          is_delete: false,
+        },
+      },
+      { upsert: true, session },
+    );
+  }
+  console.log("✅ [SEEDERS] Component formula upserted successfully!");
+};
+
+// ============================================================
+// SEEDER: CALCULATED FORMULA (definisi formula berbasis token)
+// Fungsi terpisah — mengambil komponen yang SUDAH ADA (hasil
+// seedComponentFormula) lewat lookup by slug, lalu menyusun ekspresi
+// bergaya infix (mendukung prioritas operator & tanda kurung).
+// Ikut menjaga reverse-reference component_id agar konsisten dgn controller.
+// ============================================================
+const seedCalculatedFormula = async (session) => {
+  // Ambil komponen yang sudah ada di DB (by slug) → peta slug → dokumen.
+  const components = await ComponentFormulaModel.find({
+    is_delete: false,
+  }).session(session);
+  const bySlug = {};
+  for (const c of components) bySlug[c.slug] = c;
+
+  // Helper penyusun token ekspresi.
+  const comp = (slug) => {
+    const doc = bySlug[slug];
+    if (!doc)
+      throw new Error(`[SEEDER] Komponen "${slug}" tidak ditemukan di DB.`);
+    return { type: "component", component: doc._id };
+  };
+  const num = (value) => ({ type: "constant", value });
+  const op = (operator) => ({ type: "operator", operator });
+  // Kurung buka membawa decimal_place SENDIRI (dinamis per kurung) — tiap "("
+  // boleh dibulatkan berbeda. Kurung tutup tak perlu decimal_place.
+  const lp = (dp) => ({ type: "paren", paren: "(", decimal_place: dp });
+  const rp = { type: "paren", paren: ")" };
+
+  const FORMULA_SEED = [
+    {
+      // (1) SATU KURUNG:  ( Transport + Meal ) * 2
+      //     Kurung dibulatkan ke 0 desimal, hasil akhir ke 2 desimal.
+      name: "Total Tunjangan",
+      slug: "total-tunjangan",
+      decimal_place: 2,
+      expression: [
+        lp(0),
+        comp("transport-allowance"),
+        op("+"),
+        comp("meal-allowance"),
+        rp,
+        op("*"),
+        num(2),
+      ],
+    },
+    {
+      // (2) KURUNG BERSARANG + ANGKA DI DALAM KURUNG:
+      //     ( Base Salary * ( Tax Rate + 1 ) )
+      //     -> kurung dalam berisi angka (1), dan berada di dalam kurung luar.
+      //     Tiap kurung beda dp: kurung dalam presisi 4, kurung luar 2.
+      name: "Gaji Kotor",
+      slug: "gaji-kotor",
+      decimal_place: 2,
+      expression: [
+        lp(2),
+        comp("base-salary"),
+        op("*"),
+        lp(4),
+        comp("tax-rate"),
+        op("+"),
+        num(1),
+        rp,
+        rp,
+      ],
+    },
+    {
+      // (3) KURUNG BERSARANG DALAM + BANYAK KOMPONEN:
+      //     ( ( Base + Performance Bonus ) * ( 1 + Tax Rate ) ) + Overtime
+      //     Tiap kurung beda dp: penjumlahan komponen 0, faktor pajak 4,
+      //     kurung terluar 2.
+      name: "Total Pembayaran",
+      slug: "total-pembayaran",
+      decimal_place: 2,
+      expression: [
+        lp(2),
+        lp(0),
+        comp("base-salary"),
+        op("+"),
+        comp("performance-bonus"),
+        rp,
+        op("*"),
+        lp(4),
+        num(1),
+        op("+"),
+        comp("tax-rate"),
+        rp,
+        rp,
+        op("+"),
+        comp("overtime-rate"),
+      ],
+    },
+  ];
+
+  for (const formula of FORMULA_SEED) {
+    const saved = await CalculatedFormulaModel.findOneAndUpdate(
+      { slug: formula.slug },
+      {
+        $set: {
+          name: formula.name,
+          slug: formula.slug,
+          expression: formula.expression,
+          decimal_place: formula.decimal_place,
+          is_delete: false,
+        },
+      },
+      { upsert: true, returnDocument: "after", session },
+    );
+
+    // Jaga reverse-reference (component_id) seperti controller:
+    // 1) lepaskan formula ini dari SEMUA komponen (bersihkan sisa run lama),
+    // 2) pasang kembali hanya ke komponen yang dipakai ekspresi ini.
+    const usedComponentIds = [
+      ...new Set(
+        formula.expression
+          .filter((t) => t.type === "component")
+          .map((t) => String(t.component)),
+      ),
+    ];
+
+    await ComponentFormulaModel.updateMany(
+      { component_id: saved._id },
+      { $pull: { component_id: saved._id } },
+      { session },
+    );
+    if (usedComponentIds.length) {
+      await ComponentFormulaModel.updateMany(
+        { _id: { $in: usedComponentIds } },
+        { $addToSet: { component_id: saved._id } },
+        { session },
+      );
+    }
+  }
+  console.log("✅ [SEEDERS] Calculated formula upserted successfully!");
+};
 
 const runMainSeeder = async () => {
   try {
@@ -24,6 +234,8 @@ const runMainSeeder = async () => {
         PathAccessModel,
         AuthUserModel,
         UsersModel,
+        ComponentFormulaModel,
+        CalculatedFormulaModel,
       ].map((m) =>
         m.createCollection().catch((err) => {
           // 48 = NamespaceExists -> collection sudah ada, aman diabaikan
@@ -254,6 +466,16 @@ const runMainSeeder = async () => {
       console.log(
         "✅ [SEEDERS] Multi-platform app configurations & initial versions seeded successfully!",
       );
+
+      // ==========================================
+      // SEEDER 4: COMPONENT FORMULA
+      // ==========================================
+      await seedComponentFormula(session);
+
+      // ==========================================
+      // SEEDER 5: CALCULATED FORMULA (butuh komponen di atas)
+      // ==========================================
+      await seedCalculatedFormula(session);
     });
   } catch (error) {
     console.error("❌ Seeder failed with error:", error);
