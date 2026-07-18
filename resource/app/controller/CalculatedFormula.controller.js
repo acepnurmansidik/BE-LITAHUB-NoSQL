@@ -12,6 +12,10 @@ const { runWithOptionalTransaction } = crudServices;
 // Prioritas operator (ala matematika): * dan / lebih tinggi dari + dan -.
 const PRECEDENCE = { "+": 1, "-": 1, "*": 2, "/": 2 };
 
+// Arah pembulatan yang diterima. Default "round" (terdekat).
+const ROUND_MODES = ["round", "up", "down", "none"];
+const normalizeRounding = (v) => (ROUND_MODES.includes(v) ? v : undefined);
+
 // Normalisasi satu token mentah dari payload menjadi bentuk kanonik.
 // Mengembalikan null bila token tidak valid (akan disaring).
 const normalizeToken = (raw) => {
@@ -33,10 +37,12 @@ const normalizeToken = (raw) => {
     case "paren": {
       if (!["(", ")"].includes(raw.paren)) return null;
       const token = { type: "paren", paren: raw.paren };
-      // decimal_place hanya bermakna pada "(" (pembulatan grup kurung ini).
+      // decimal_place & rounding hanya bermakna pada "(" (pembulatan grup ini).
       if (raw.paren === "(") {
         const dp = Number(raw.decimal_place);
         if (Number.isInteger(dp) && dp >= 0) token.decimal_place = dp;
+        const rounding = normalizeRounding(raw.rounding);
+        if (rounding) token.rounding = rounding;
       }
       return token;
     }
@@ -247,6 +253,7 @@ controller.create = async (req, res, next) => {
     const decimalPlace = Number.isInteger(payload.decimal_place)
       ? payload.decimal_place
       : 2;
+    const rounding = normalizeRounding(payload.rounding) ?? "round";
 
     const result = await runWithOptionalTransaction(async (session) => {
       const { tokens, componentIds } = await resolveExpression(
@@ -262,6 +269,7 @@ controller.create = async (req, res, next) => {
             slug,
             expression: tokens,
             decimal_place: decimalPlace,
+            rounding,
           },
         ],
         { session },
@@ -332,6 +340,10 @@ controller.update = async (req, res, next) => {
       }
       if (Number.isInteger(payload.decimal_place)) {
         formula.decimal_place = payload.decimal_place;
+      }
+      const nextRounding = normalizeRounding(payload.rounding);
+      if (nextRounding) {
+        formula.rounding = nextRounding;
       }
 
       const hasNewExpression =

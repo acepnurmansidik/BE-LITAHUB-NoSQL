@@ -49,6 +49,12 @@ const TokenSchema = new Schema(
         message: "Decimal place must be an integer",
       },
     },
+    // Khusus paren "(" : arah pembulatan hasil GRUP kurung ini.
+    //  round = terdekat, up = ke atas, down = ke bawah, none = nilai asli.
+    rounding: {
+      type: String,
+      enum: ["round", "up", "down", "none"],
+    },
   },
   { _id: false },
 );
@@ -89,6 +95,14 @@ const CalculatedFormulaSchema = new Schema(
         validator: Number.isInteger,
         message: "Decimal place must be an integer",
       },
+    },
+    // Arah pembulatan HASIL AKHIR formula.
+    //  round = terdekat (default), up = ke atas, down = ke bawah,
+    //  none = nilai asli (tanpa pembulatan).
+    rounding: {
+      type: String,
+      enum: ["round", "up", "down", "none"],
+      default: "round",
     },
     is_delete: { type: Boolean, required: true, default: false },
   },

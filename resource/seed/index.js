@@ -109,20 +109,28 @@ const seedCalculatedFormula = async (session) => {
   };
   const num = (value) => ({ type: "constant", value });
   const op = (operator) => ({ type: "operator", operator });
-  // Kurung buka membawa decimal_place SENDIRI (dinamis per kurung) — tiap "("
-  // boleh dibulatkan berbeda. Kurung tutup tak perlu decimal_place.
-  const lp = (dp) => ({ type: "paren", paren: "(", decimal_place: dp });
+  // Kurung buka membawa decimal_place + arah pembulatan SENDIRI (dinamis per
+  // kurung) — tiap "(" boleh beda. Kurung tutup tak perlu apa-apa.
+  //  rounding: "round" (terdekat) | "up" (ke atas) | "down" (ke bawah)
+  //          | "none" (nilai asli, tanpa pembulatan).
+  const lp = (dp, rounding = "round") => ({
+    type: "paren",
+    paren: "(",
+    decimal_place: dp,
+    rounding,
+  });
   const rp = { type: "paren", paren: ")" };
 
   const FORMULA_SEED = [
     {
       // (1) SATU KURUNG:  ( Transport + Meal ) * 2
-      //     Kurung dibulatkan ke 0 desimal, hasil akhir ke 2 desimal.
+      //     Kurung dibulatkan KE ATAS ke 0 desimal; hasil akhir NORMAL 2 desimal.
       name: "Total Tunjangan",
       slug: "total-tunjangan",
       decimal_place: 2,
+      rounding: "round",
       expression: [
-        lp(0),
+        lp(0, "up"),
         comp("transport-allowance"),
         op("+"),
         comp("meal-allowance"),
@@ -135,15 +143,17 @@ const seedCalculatedFormula = async (session) => {
       // (2) KURUNG BERSARANG + ANGKA DI DALAM KURUNG:
       //     ( Base Salary * ( Tax Rate + 1 ) )
       //     -> kurung dalam berisi angka (1), dan berada di dalam kurung luar.
-      //     Tiap kurung beda dp: kurung dalam presisi 4, kurung luar 2.
+      //     Tiap kurung beda dp & arah: kurung dalam presisi 4 KE BAWAH,
+      //     kurung luar 2 normal; hasil akhir KE ATAS.
       name: "Gaji Kotor",
       slug: "gaji-kotor",
       decimal_place: 2,
+      rounding: "up",
       expression: [
-        lp(2),
+        lp(2, "round"),
         comp("base-salary"),
         op("*"),
-        lp(4),
+        lp(4, "down"),
         comp("tax-rate"),
         op("+"),
         num(1),
@@ -154,20 +164,22 @@ const seedCalculatedFormula = async (session) => {
     {
       // (3) KURUNG BERSARANG DALAM + BANYAK KOMPONEN:
       //     ( ( Base + Performance Bonus ) * ( 1 + Tax Rate ) ) + Overtime
-      //     Tiap kurung beda dp: penjumlahan komponen 0, faktor pajak 4,
-      //     kurung terluar 2.
+      //     Tiap kurung beda dp & arah: penjumlahan komponen 0 KE ATAS,
+      //     faktor pajak TANPA pembulatan (nilai asli), kurung terluar 2 normal;
+      //     hasil akhir KE BAWAH.
       name: "Total Pembayaran",
       slug: "total-pembayaran",
       decimal_place: 2,
+      rounding: "down",
       expression: [
-        lp(2),
-        lp(0),
+        lp(2, "round"),
+        lp(0, "up"),
         comp("base-salary"),
         op("+"),
         comp("performance-bonus"),
         rp,
         op("*"),
-        lp(4),
+        lp(4, "none"),
         num(1),
         op("+"),
         comp("tax-rate"),
@@ -188,6 +200,7 @@ const seedCalculatedFormula = async (session) => {
           slug: formula.slug,
           expression: formula.expression,
           decimal_place: formula.decimal_place,
+          rounding: formula.rounding ?? "round",
           is_delete: false,
         },
       },
