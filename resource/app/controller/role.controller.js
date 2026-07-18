@@ -6,48 +6,6 @@ const PathAccessModel = require("../models/PathAccess.model");
 const logActionModel = require("../models/LogAction.model");
 const controller = {};
 
-// Bangun daftar path_access dari struktur has_access_module.
-// Ambil dari setiap permission (menu utama) tiap modul.
-const buildPathAccess = (modules = []) => {
-  const pathAccess = [];
-  for (const everyMod of modules) {
-    for (const everyPermission of everyMod.permission ?? []) {
-      pathAccess.push({
-        path: everyPermission.path,
-        actions: everyPermission.actions,
-      });
-    }
-  }
-  return pathAccess;
-};
-
-// Buat dokumen anak (role_modules & path_accesses) lalu kembalikan id-nya
-// untuk direferensikan dari dokumen Role.
-const createChildren = async (roleId, modules, session) => {
-  const moduleDocs = modules.map((m) => ({
-    role_id: roleId,
-    name: m.name,
-    title: m.title,
-    permission: m.permission ?? [],
-  }));
-
-  const pathDocs = buildPathAccess(modules).map((p) => ({
-    role_id: roleId,
-    path: p.path,
-    actions: p.actions,
-  }));
-
-  const [createdModules, createdPaths] = await Promise.all([
-    RoleModuleModel.create(moduleDocs, { session, ordered: true }),
-    PathAccessModel.create(pathDocs, { session, ordered: true }),
-  ]);
-
-  return {
-    moduleIds: createdModules.map((d) => d._id),
-    pathIds: createdPaths.map((d) => d._id),
-  };
-};
-
 controller.getAllRole = async (req, res, next) => {
   /*
     #swagger.tags = ['ROLE']
@@ -189,26 +147,50 @@ controller.updateRole = async (req, res, next) => {
 
         const before = role.toObject();
 
-        // 1. Hapus dokumen anak lama milik role ini, lalu buat ulang
+        // 1. Hapus dokumen anak lama milik role ini, lalu buat ulang dari payload
         await Promise.all([
           RoleModuleModel.deleteMany({ role_id: id }, { session }),
           PathAccessModel.deleteMany({ role_id: id }, { session }),
         ]);
 
-        const { moduleIds, pathIds } = await createChildren(
-          role._id,
-          modules,
-          session,
-        );
+        // 2. Susun dokumen RoleModule baru
+        const moduleDocs = modules.map((mod) => ({
+          role_id: id,
+          name: mod.name,
+          title: mod.title,
+          permission: mod.permission ?? [],
+        }));
 
-        // 2. Update dokumen Role
+        // 3. Susun dokumen PathAccess baru dari setiap menu.
+        //    Menu tanpa children -> pakai path menu itu sendiri.
+        //    Menu dengan children -> pakai path tiap child.
+        const pathDocs = [];
+        for (const mod of modules) {
+          for (const menu of mod.permission ?? []) {
+            const targets = menu.children?.length ? menu.children : [menu];
+            for (const target of targets) {
+              pathDocs.push({
+                role_id: id,
+                path: target.path,
+                actions: target.actions,
+              });
+            }
+          }
+        }
+
+        const [createdModules, createdPaths] = await Promise.all([
+          RoleModuleModel.create(moduleDocs, { session, ordered: true }),
+          PathAccessModel.create(pathDocs, { session, ordered: true }),
+        ]);
+
+        // 4. Update dokumen Role dengan referensi anak yang baru
         role.name = payload.name;
         role.slug = slug;
-        role.has_access_module = moduleIds;
-        role.path_access = pathIds;
+        role.has_access_module = createdModules.map((d) => d._id);
+        role.path_access = createdPaths.map((d) => d._id);
         await role.save({ session });
 
-        // 3. Log hanya untuk dokumen Role
+        // 5. Log hanya untuk dokumen Role
         await logActionModel.create(
           [
             {
