@@ -12,6 +12,7 @@ const AppConfigModel = require("../app/models/AppConfig.model");
 const AppReleaseLogModel = require("../app/models/AppReleaseLog.model");
 const ComponentFormulaModel = require("../app/models/ComponentFormula.model");
 const CalculatedFormulaModel = require("../app/models/CalculatedFormula.model");
+const ChartOfAccountModel = require("../app/models/ChartOfAccount.model");
 
 // ============================================================
 // SEEDER: COMPONENT FORMULA (data master rate)
@@ -234,6 +235,259 @@ const seedCalculatedFormula = async (session) => {
   console.log("✅ [SEEDERS] Calculated formula upserted successfully!");
 };
 
+// ============================================================
+// SEEDER: CHART OF ACCOUNT (COA) — Finance
+// Fungsi TERPISAH (runFinanceSeeder). COA berhierarki tak terbatas, jadi data
+// seed disusun sebagai POHON lalu ditelusuri rekursif: induk di-upsert lebih
+// dulu agar `parent_id`/`level`/`path` anak bisa dihitung. Anak MEWARISI `type`
+// dari induk (root menentukan type), persis kaidah di controller.
+// Idempoten: upsert by `code`.
+// ============================================================
+
+// Peta tipe akun → saldo normal (samakan persis dengan controller COA).
+const COA_NORMAL_BALANCE_BY_TYPE = {
+  ASSET: "DEBIT",
+  LIABILITY: "CREDIT",
+  EQUITY: "CREDIT",
+  REVENUE: "CREDIT",
+  EXPENSE: "DEBIT",
+  CAPITAL: "CREDIT",
+  SALES: "CREDIT",
+  COGS: "DEBIT",
+  OTHER_INCOME_EXPENSE: "CREDIT",
+  ADM_OPERATION_EXPENSE: "DEBIT",
+  DEPRECIATION_AMORTIZATION: "DEBIT",
+  OTHERS: "DEBIT",
+};
+const coaNormalBalanceFor = (type) =>
+  COA_NORMAL_BALANCE_BY_TYPE[type] ?? "DEBIT";
+
+// Definisi pohon COA standar. `type` hanya perlu di node root; turunan
+// mewarisinya. `h: true` menandai akun header (grup) yang boleh punya anak.
+const COA_SEED = [
+  {
+    code: "1000",
+    name: "Assets",
+    type: "ASSET",
+    h: true,
+    children: [
+      {
+        code: "1100",
+        name: "Current Assets",
+        h: true,
+        children: [
+          {
+            code: "1110",
+            name: "Cash & Bank",
+            h: true,
+            children: [
+              { code: "1111", name: "Cash on Hand" },
+              { code: "1112", name: "Bank - Checking" },
+            ],
+          },
+          { code: "1120", name: "Accounts Receivable" },
+          { code: "1130", name: "Inventory" },
+        ],
+      },
+      {
+        code: "1200",
+        name: "Fixed Assets",
+        h: true,
+        children: [
+          { code: "1210", name: "Equipment" },
+          { code: "1220", name: "Accumulated Depreciation" },
+        ],
+      },
+    ],
+  },
+  {
+    code: "2000",
+    name: "Liabilities",
+    type: "LIABILITY",
+    h: true,
+    children: [
+      {
+        code: "2100",
+        name: "Current Liabilities",
+        h: true,
+        children: [
+          { code: "2110", name: "Accounts Payable" },
+          { code: "2120", name: "Taxes Payable" },
+        ],
+      },
+      {
+        code: "2200",
+        name: "Long-term Liabilities",
+        h: true,
+        children: [{ code: "2210", name: "Bank Loan" }],
+      },
+    ],
+  },
+  {
+    code: "3000",
+    name: "Equity",
+    type: "EQUITY",
+    h: true,
+    children: [
+      { code: "3100", name: "Owner's Capital" },
+      { code: "3200", name: "Retained Earnings" },
+    ],
+  },
+  {
+    code: "4000",
+    name: "Revenue",
+    type: "REVENUE",
+    h: true,
+    children: [
+      { code: "4100", name: "Sales Revenue" },
+      { code: "4200", name: "Service Revenue" },
+    ],
+  },
+  {
+    code: "5000",
+    name: "Expenses",
+    type: "EXPENSE",
+    h: true,
+    children: [
+      {
+        code: "5100",
+        name: "Operating Expenses",
+        h: true,
+        children: [
+          { code: "5110", name: "Salaries Expense" },
+          { code: "5120", name: "Rent Expense" },
+          { code: "5130", name: "Utilities Expense" },
+        ],
+      },
+      { code: "5200", name: "Depreciation Expense" },
+    ],
+  },
+  {
+    code: "6000",
+    name: "Capital",
+    type: "CAPITAL",
+    h: true,
+    children: [
+      { code: "6100", name: "Owner's Capital" },
+      { code: "6200", name: "Additional Paid-in Capital" },
+    ],
+  },
+  {
+    code: "7000",
+    name: "Sales",
+    type: "SALES",
+    h: true,
+    children: [
+      { code: "7100", name: "Product Sales" },
+      { code: "7200", name: "Service Sales" },
+    ],
+  },
+  {
+    code: "8000",
+    name: "Cost of Goods Sold",
+    type: "COGS",
+    h: true,
+    children: [
+      { code: "8100", name: "Direct Materials" },
+      { code: "8200", name: "Direct Labor" },
+    ],
+  },
+  {
+    code: "8500",
+    name: "Adm & Operation Expense",
+    type: "ADM_OPERATION_EXPENSE",
+    h: true,
+    children: [
+      { code: "8510", name: "Office Supplies" },
+      { code: "8520", name: "Rent Expense" },
+      { code: "8530", name: "Utilities Expense" },
+    ],
+  },
+  {
+    code: "8700",
+    name: "Depreciation & Amortization",
+    type: "DEPRECIATION_AMORTIZATION",
+    h: true,
+    children: [
+      { code: "8710", name: "Depreciation Expense" },
+      { code: "8720", name: "Amortization Expense" },
+    ],
+  },
+  {
+    code: "9000",
+    name: "Other Income & Expense",
+    type: "OTHER_INCOME_EXPENSE",
+    h: true,
+    children: [
+      { code: "9100", name: "Interest Income" },
+      { code: "9200", name: "Interest Expense" },
+    ],
+  },
+  {
+    code: "9500",
+    name: "Others",
+    type: "OTHERS",
+    h: true,
+    children: [{ code: "9510", name: "Miscellaneous" }],
+  },
+];
+
+const seedChartOfAccount = async (session) => {
+  // Upsert satu node lalu turun ke anak-anaknya. `parent` = dokumen induk (null
+  // untuk root). Type diwariskan dari induk; hanya root yang membawa `type`.
+  const upsertNode = async (node, parent) => {
+    const type = parent ? parent.type : node.type;
+    const level = parent ? parent.level + 1 : 1;
+    // Kode induk menjadi prefix otomatis (berjenjang sampai ke bawah), jadi
+    // `node.code` di data seed diperlakukan sebagai SEGMEN LOKAL dan kode final
+    // = path (mis. root "1000" → anak "1000.1100" → cucu "1000.1100.1110").
+    const path = parent ? `${parent.path}.${node.code}` : node.code;
+
+    const saved = await ChartOfAccountModel.findOneAndUpdate(
+      { code: path },
+      {
+        $set: {
+          code: path,
+          name: node.name,
+          type,
+          normal_balance: coaNormalBalanceFor(type),
+          is_header: node.h === true,
+          parent_id: parent ? parent._id : null,
+          level,
+          path,
+          is_delete: false,
+        },
+      },
+      { upsert: true, returnDocument: "after", session },
+    );
+
+    for (const child of node.children ?? []) {
+      await upsertNode(child, saved);
+    }
+  };
+
+  for (const root of COA_SEED) {
+    await upsertNode(root, null);
+  }
+  console.log("✅ [SEEDERS] Chart of account upserted successfully!");
+};
+
+// Seeder Finance berdiri sendiri — dipanggil terpisah dari runMainSeeder.
+const runFinanceSeeder = async () => {
+  try {
+    // Pastikan collection ada sebelum transaksi (hindari konflik catalog).
+    await ChartOfAccountModel.createCollection().catch((err) => {
+      if (err?.code !== 48) throw err; // 48 = NamespaceExists → aman diabaikan
+    });
+
+    await crudServices.runWithOptionalTransaction(async (session) => {
+      await seedChartOfAccount(session);
+    });
+  } catch (error) {
+    console.error("❌ Finance seeder failed with error:", error);
+  }
+};
+
 const runMainSeeder = async () => {
   try {
     // Pastikan collection sudah ada SEBELUM transaksi, agar insert pertama
@@ -249,6 +503,7 @@ const runMainSeeder = async () => {
         UsersModel,
         ComponentFormulaModel,
         CalculatedFormulaModel,
+        ChartOfAccountModel,
       ].map((m) =>
         m.createCollection().catch((err) => {
           // 48 = NamespaceExists -> collection sudah ada, aman diabaikan
@@ -495,4 +750,4 @@ const runMainSeeder = async () => {
   }
 };
 
-module.exports = { runMainSeeder };
+module.exports = { runMainSeeder, runFinanceSeeder };
