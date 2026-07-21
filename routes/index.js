@@ -10,6 +10,7 @@ const appConfigRouter = require("../resource/app/router/appConfig.routes");
 const componentFormulaRouter = require("../resource/app/router/componentFormula.routes");
 const calculatedFormulaRouter = require("../resource/app/router/calculatedFormula.routes");
 const chartOfAccountRouter = require("../resource/app/router/chartOfAccount.routes");
+const journalEntryRouter = require("../resource/app/router/journalEntry.routes");
 const AuthorizeUserLogin = require("../resource/middleware/authentification");
 
 router.use("/app-configs", appConfigRouter);
@@ -21,6 +22,7 @@ router.use("/ref-parameter", refparamRouter);
 router.use("/component-formula", componentFormulaRouter);
 router.use("/calculated-formula", calculatedFormulaRouter);
 router.use("/chart-of-account", chartOfAccountRouter);
+router.use("/journal-entry", journalEntryRouter);
 router.use(AuthorizeUserLogin);
 
 module.exports = router;

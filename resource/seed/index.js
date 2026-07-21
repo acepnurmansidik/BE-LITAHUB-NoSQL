@@ -13,6 +13,7 @@ const AppReleaseLogModel = require("../app/models/AppReleaseLog.model");
 const ComponentFormulaModel = require("../app/models/ComponentFormula.model");
 const CalculatedFormulaModel = require("../app/models/CalculatedFormula.model");
 const ChartOfAccountModel = require("../app/models/ChartOfAccount.model");
+const JournalEntryModel = require("../app/models/JournalEntry.model");
 
 // ============================================================
 // SEEDER: COMPONENT FORMULA (data master rate)
@@ -472,16 +473,90 @@ const seedChartOfAccount = async (session) => {
   console.log("✅ [SEEDERS] Chart of account upserted successfully!");
 };
 
+// ============================================================
+// SEEDER: JOURNAL ENTRY — Finance
+// Butuh COA sudah tersemai (mereferensikan akun POSTABLE by code). Idempoten:
+// dilewati bila entri contoh (dikenali dari `reference`) sudah ada.
+// ============================================================
+const seedJournalEntry = async (session) => {
+  const REF = "SEED-CASH-SALE";
+
+  const exists = await JournalEntryModel.findOne({ reference: REF }).session(
+    session,
+  );
+  if (exists) {
+    console.log("ℹ️ [SEEDERS] Journal entry sample already exists, skipped.");
+    return;
+  }
+
+  // Ambil akun postable contoh berdasarkan kode final (materialized path).
+  const [cash, sales] = await Promise.all([
+    ChartOfAccountModel.findOne({ code: "1000.1100.1110.1111" }).session(session),
+    ChartOfAccountModel.findOne({ code: "7000.7100" }).session(session),
+  ]);
+  if (!cash || !sales) {
+    console.log(
+      "⚠️ [SEEDERS] Journal entry sample skipped (referenced COA not found).",
+    );
+    return;
+  }
+
+  const lines = [
+    {
+      account_id: cash._id,
+      account_code: cash.code,
+      account_name: cash.name,
+      description: "Cash received from product sale",
+      debit: 1500000,
+      credit: 0,
+    },
+    {
+      account_id: sales._id,
+      account_code: sales.code,
+      account_name: sales.name,
+      description: "Product sale revenue",
+      debit: 0,
+      credit: 1500000,
+    },
+  ];
+
+  const now = new Date();
+  const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  await JournalEntryModel.create(
+    [
+      {
+        entry_no: `JE-${ym}-0001`,
+        date: now,
+        description: "Sample cash sale (seed)",
+        reference: REF,
+        status: "POSTED",
+        lines,
+        total_debit: 1500000,
+        total_credit: 1500000,
+      },
+    ],
+    { session },
+  );
+  console.log("✅ [SEEDERS] Journal entry sample upserted successfully!");
+};
+
 // Seeder Finance berdiri sendiri — dipanggil terpisah dari runMainSeeder.
 const runFinanceSeeder = async () => {
   try {
     // Pastikan collection ada sebelum transaksi (hindari konflik catalog).
-    await ChartOfAccountModel.createCollection().catch((err) => {
-      if (err?.code !== 48) throw err; // 48 = NamespaceExists → aman diabaikan
-    });
+    await Promise.all(
+      [ChartOfAccountModel, JournalEntryModel].map((m) =>
+        m.createCollection().catch((err) => {
+          if (err?.code !== 48) throw err; // 48 = NamespaceExists → aman diabaikan
+        }),
+      ),
+    );
 
     await crudServices.runWithOptionalTransaction(async (session) => {
       await seedChartOfAccount(session);
+      // Jurnal contoh butuh COA di atas sudah ada.
+      await seedJournalEntry(session);
     });
   } catch (error) {
     console.error("❌ Finance seeder failed with error:", error);
