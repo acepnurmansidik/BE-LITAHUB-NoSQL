@@ -97,8 +97,10 @@ controller.index = async (req, res, next) => {
     #swagger.parameters['search'] = { default: '', description: 'search by name / code' }
   */
   try {
-    const { search } = req.query;
+    const { search, is_header } = req.query;
     const query = {};
+
+    if (is_header) query.is_header = is_header;
 
     if (search) {
       query["$or"] = [
@@ -158,11 +160,12 @@ controller.create = async (req, res, next) => {
     const parentId = payload.parent_id || null;
 
     const result = await runWithOptionalTransaction(async (session) => {
-      const { parent, level, path, type: parentType } = await resolveParent(
-        parentId,
-        localCode,
-        session,
-      );
+      const {
+        parent,
+        level,
+        path,
+        type: parentType,
+      } = await resolveParent(parentId, localCode, session);
 
       // Kode final = path (kode induk sebagai prefix). Untuk akun root, kode
       // final sama dengan segmen yang diketik.
@@ -255,7 +258,8 @@ controller.update = async (req, res, next) => {
         is_delete: { $ne: true },
       }).session(session);
 
-      if (payload.name !== undefined) account.name = String(payload.name).trim();
+      if (payload.name !== undefined)
+        account.name = String(payload.name).trim();
       if (payload.description !== undefined) {
         account.description = payload.description;
       }
@@ -278,9 +282,7 @@ controller.update = async (req, res, next) => {
         ? account.code.slice(account.code.lastIndexOf(".") + 1)
         : account.code;
       const localCode =
-        payload.code !== undefined
-          ? String(payload.code).trim()
-          : currentLocal;
+        payload.code !== undefined ? String(payload.code).trim() : currentLocal;
       if (!localCode) throw new BadRequest("Account code is required!");
       if (localCode.includes(".")) {
         throw new BadRequest("Account code segment cannot contain a dot (.).");
@@ -299,11 +301,12 @@ controller.update = async (req, res, next) => {
 
       // Susun ulang path/level/kode dari induk efektif + segmen lokal. Kode
       // final = path (prefix induk otomatis, berjenjang sampai ke bawah).
-      const { parent, level, path, type: parentType } = await resolveParent(
-        nextParentId,
-        localCode,
-        session,
-      );
+      const {
+        parent,
+        level,
+        path,
+        type: parentType,
+      } = await resolveParent(nextParentId, localCode, session);
       if (parent && parent.path.startsWith(`${oldPath}.`)) {
         throw new BadRequest(
           "Cannot move an account under one of its own descendants.",

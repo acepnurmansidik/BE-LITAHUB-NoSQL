@@ -1,6 +1,7 @@
 const crudServices = require("../../helper/crudService");
 const globalService = require("../../helper/global-func");
 const CalculatedFormulaModel = require("../models/CalculatedFormula.model");
+const CalculatedFormulaComponentModel = require("../models/CalculatedFormulaComponent.model");
 const ComponentFormulaModel = require("../models/ComponentFormula.model");
 const logActionModel = require("../models/LogAction.model");
 const BadRequest = require("../../utils/errors/bad-request");
@@ -16,6 +17,27 @@ const PRECEDENCE = { "+": 1, "-": 1, "*": 2, "/": 2 };
 const ROUND_MODES = ["round", "up", "down", "none"];
 const normalizeRounding = (v) => (ROUND_MODES.includes(v) ? v : undefined);
 
+// Tipe perhitungan formula.
+//  - SINGLE        : Ekspresi Tunggal (satu ekspresi utuh).
+//  - PER_COMPONENT : Per Komponen (banyak komponen bernama, dihitung terpisah
+//                    lalu dijumlahkan).
+const CALC_TYPES = ["SINGLE", "PER_COMPONENT"];
+const normalizeCalcType = (v) => {
+  const t = String(v ?? "").toUpperCase();
+  return CALC_TYPES.includes(t) ? t : "SINGLE";
+};
+
+// Rapikan array id akun (buang nilai kosong). Cast ObjectId dilakukan Mongoose.
+const sanitizeAccounts = (v) =>
+  (Array.isArray(v) ? v : []).filter(Boolean);
+
+// Jenis assign akun. Default FORMULA_COMPONENT.
+const ACCOUNT_ASSIGNMENTS = ["FORMULA_COMPONENT", "COMPONENT_DETAIL"];
+const normalizeAccountAssignment = (v) => {
+  const t = String(v ?? "").toUpperCase();
+  return ACCOUNT_ASSIGNMENTS.includes(t) ? t : "FORMULA_COMPONENT";
+};
+
 // Normalisasi satu token mentah dari payload menjadi bentuk kanonik.
 // Mengembalikan null bila token tidak valid (akan disaring).
 const normalizeToken = (raw) => {
@@ -24,7 +46,13 @@ const normalizeToken = (raw) => {
   switch (raw.type) {
     case "component": {
       const id = raw.component ?? raw.component_id;
-      return id ? { type: "component", component: id } : null;
+      if (!id) return null;
+      const token = { type: "component", component: id };
+      // Operator penggabung x (khusus komponen EXTERNAL) — simpan bila valid.
+      if (["+", "-", "*", "/"].includes(raw.x_operator)) {
+        token.x_operator = raw.x_operator;
+      }
+      return token;
     }
     case "constant": {
       const v = Number(raw.value);
@@ -188,6 +216,89 @@ const componentIdsFromTokens = (tokens) => [
   ),
 ];
 
+// PER_COMPONENT: normalisasi + validasi daftar komponen formula. Tiap komponen
+// wajib punya `name` dan ekspresi valid; dp/rounding-nya independen. Mengembalikan
+// { components: [{ name, expression, decimal_place, rounding, order }], componentIds }
+// dengan componentIds = gabungan seluruh ComponentFormula yang direferensikan.
+const resolveComponents = async (rawComponents, session) => {
+  if (!Array.isArray(rawComponents) || rawComponents.length === 0) {
+    throw new BadRequest(
+      "At least one formula component is required for PER_COMPONENT type.",
+    );
+  }
+
+  const components = [];
+  const allIds = new Set();
+
+  for (let i = 0; i < rawComponents.length; i++) {
+    const raw = rawComponents[i] || {};
+    const name = String(raw.name ?? "").trim();
+    if (!name) {
+      throw new BadRequest(`Component ${i + 1}: name is required.`);
+    }
+
+    // Tiap komponen memakai resolver ekspresi yang sama seperti mode SINGLE.
+    const { tokens, componentIds } = await resolveExpression(
+      raw.expression,
+      null,
+      session,
+    );
+    componentIds.forEach((id) => allIds.add(id));
+
+    components.push({
+      name,
+      expression: tokens,
+      decimal_place: Number.isInteger(raw.decimal_place) ? raw.decimal_place : 2,
+      rounding: normalizeRounding(raw.rounding) ?? "round",
+      order: i,
+      // ObjectId ComponentFormula yang ditambahkan pada komponen ini (opsional).
+      component_line: raw.component_line || undefined,
+      // Akun (Chart of Account) terkait komponen ini.
+      accounts: sanitizeAccounts(raw.accounts),
+    });
+  }
+
+  return { components, componentIds: [...allIds] };
+};
+
+// Daftar id ComponentFormula yang SAAT INI dipakai sebuah formula (untuk diff
+// referensi-balik). SINGLE → dari ekspresi induk; PER_COMPONENT → gabungan dari
+// seluruh komponennya.
+const currentComponentIds = async (formula, session) => {
+  if (formula.calc_type === "PER_COMPONENT") {
+    const comps = await CalculatedFormulaComponentModel.find({
+      calculated_formula_id: formula._id,
+      is_delete: { $ne: true },
+    }).session(session ?? null);
+    const set = new Set();
+    comps.forEach((c) =>
+      componentIdsFromTokens(c.expression).forEach((id) => set.add(id)),
+    );
+    return [...set];
+  }
+  return componentIdsFromTokens(formula.expression);
+};
+
+// Sinkronkan referensi-balik ComponentFormula.component_id terhadap formula ini.
+const syncComponentBackRefs = async (formulaId, oldIds, newIds, session) => {
+  const toAdd = newIds.filter((id) => !oldIds.includes(id));
+  const toRemove = oldIds.filter((id) => !newIds.includes(id));
+  if (toAdd.length) {
+    await ComponentFormulaModel.updateMany(
+      { _id: { $in: toAdd } },
+      { $addToSet: { component_id: formulaId } },
+      { session },
+    );
+  }
+  if (toRemove.length) {
+    await ComponentFormulaModel.updateMany(
+      { _id: { $in: toRemove } },
+      { $pull: { component_id: formulaId } },
+      { session },
+    );
+  }
+};
+
 controller.index = async (req, res, next) => {
   /*
     #swagger.tags = ['CALCULATED FORMULA']
@@ -208,11 +319,36 @@ controller.index = async (req, res, next) => {
     }
     if (arrFilter.length) query["$or"] = arrFilter;
 
+    const componentSelect =
+      "name slug rate_type fixed_rate calculated_rate decimal_place";
+    const accountSelect = "code name type";
     const populateField = [
+      // Mode SINGLE: komponen di ekspresi induk.
       {
         path: "expression.component",
         model: "ComponentFormula",
-        select: "name slug rate_type fixed_rate calculated_rate decimal_place",
+        select: componentSelect,
+      },
+      // Akun hasil akhir formula.
+      { path: "accounts", model: "ChartOfAccount", select: accountSelect },
+      // Mode PER_COMPONENT: komponen-komponen formula + isinya ter-populate.
+      {
+        path: "components",
+        match: { is_delete: { $ne: true } },
+        options: { sort: { order: 1 } },
+        populate: [
+          {
+            path: "expression.component",
+            model: "ComponentFormula",
+            select: componentSelect,
+          },
+          { path: "accounts", model: "ChartOfAccount", select: accountSelect },
+          {
+            path: "component_line",
+            model: "ComponentFormula",
+            select: componentSelect,
+          },
+        ],
       },
     ];
 
@@ -250,39 +386,74 @@ controller.create = async (req, res, next) => {
     const payload = req.body;
     payload.name = payload.name.toLowerCase();
     const slug = globalService.createSlug(payload.name);
+    const calcType = normalizeCalcType(payload.calc_type);
     const decimalPlace = Number.isInteger(payload.decimal_place)
       ? payload.decimal_place
       : 2;
     const rounding = normalizeRounding(payload.rounding) ?? "round";
 
     const result = await runWithOptionalTransaction(async (session) => {
-      const { tokens, componentIds } = await resolveExpression(
-        payload.expression,
-        payload.components,
-        session,
-      );
+      let componentIds = [];
 
-      const [formula] = await CalculatedFormulaModel.create(
-        [
-          {
-            name: payload.name,
-            slug,
-            expression: tokens,
-            decimal_place: decimalPlace,
-            rounding,
-          },
-        ],
-        { session },
-      );
+      // Buat master lebih dulu; isi ekspresi/komponen sesuai tipe.
+      const base = {
+        name: payload.name,
+        slug,
+        calc_type: calcType,
+        decimal_place: decimalPlace,
+        rounding,
+        // Akun hasil akhir (berlaku utk kedua tipe).
+        accounts: sanitizeAccounts(payload.accounts),
+        account_assignment: normalizeAccountAssignment(payload.account_assignment),
+        expression: [],
+        components: [],
+      };
 
-      // Simpan referensi balik: komponen yang dipakai mencatat formula ini.
-      if (componentIds.length) {
-        await ComponentFormulaModel.updateMany(
-          { _id: { $in: componentIds } },
-          { $addToSet: { component_id: formula._id } },
+      if (calcType === "PER_COMPONENT") {
+        // Validasi seluruh komponen sebelum menyentuh DB.
+        const resolved = await resolveComponents(payload.components, session);
+        componentIds = resolved.componentIds;
+
+        const [formula] = await CalculatedFormulaModel.create([base], {
+          session,
+        });
+
+        // Simpan tiap komponen ke koleksi terpisah, lalu tautkan ke induk.
+        // ordered: true wajib saat create banyak dokumen dalam satu session.
+        const createdComponents = await CalculatedFormulaComponentModel.create(
+          resolved.components.map((c) => ({
+            ...c,
+            calculated_formula_id: formula._id,
+          })),
+          { session, ordered: true },
+        );
+        formula.components = createdComponents.map((c) => c._id);
+        await formula.save({ session });
+
+        await syncComponentBackRefs(formula._id, [], componentIds, session);
+
+        await logActionModel.create(
+          [
+            {
+              target_id: formula._id,
+              source: CalculatedFormulaModel.collection.collectionName,
+              activities: [{ type: "CREATE", after: formula.toObject() }],
+            },
+          ],
           { session },
         );
+
+        return formula;
       }
+
+      // SINGLE (Ekspresi Tunggal): satu ekspresi utuh.
+      const resolved = await resolveExpression(payload.expression, null, session);
+      componentIds = resolved.componentIds;
+      base.expression = resolved.tokens;
+
+      const [formula] = await CalculatedFormulaModel.create([base], { session });
+
+      await syncComponentBackRefs(formula._id, [], componentIds, session);
 
       await logActionModel.create(
         [
@@ -345,38 +516,77 @@ controller.update = async (req, res, next) => {
       if (nextRounding) {
         formula.rounding = nextRounding;
       }
-
-      const hasNewExpression =
-        payload.expression !== undefined || payload.components !== undefined;
-
-      if (hasNewExpression) {
-        const oldIds = componentIdsFromTokens(formula.expression);
-
-        const { tokens, componentIds } = await resolveExpression(
-          payload.expression,
-          payload.components,
-          session,
+      // Akun hasil akhir.
+      if (payload.accounts !== undefined) {
+        formula.accounts = sanitizeAccounts(payload.accounts);
+      }
+      if (payload.account_assignment !== undefined) {
+        formula.account_assignment = normalizeAccountAssignment(
+          payload.account_assignment,
         );
+      }
 
-        const toAdd = componentIds.filter((cid) => !oldIds.includes(cid));
-        const toRemove = oldIds.filter((cid) => !componentIds.includes(cid));
+      const nextCalcType =
+        payload.calc_type !== undefined
+          ? normalizeCalcType(payload.calc_type)
+          : formula.calc_type;
+      const typeChanged = nextCalcType !== formula.calc_type;
+      const wantsExpression = payload.expression !== undefined;
+      const wantsComponents = payload.components !== undefined;
 
-        if (toAdd.length) {
-          await ComponentFormulaModel.updateMany(
-            { _id: { $in: toAdd } },
-            { $addToSet: { component_id: formula._id } },
+      // Perlu rebuild isi (dan sinkron referensi-balik) bila tipe berubah atau
+      // konten (ekspresi / komponen) dikirim.
+      if (typeChanged || wantsExpression || wantsComponents) {
+        // Kumpulkan id komponen LAMA sebelum diubah (untuk diff referensi-balik).
+        const oldIds = await currentComponentIds(formula, session);
+        let newIds = [];
+
+        if (nextCalcType === "PER_COMPONENT") {
+          const source = wantsComponents ? payload.components : null;
+          if (!source) {
+            throw new BadRequest(
+              "components are required for PER_COMPONENT type.",
+            );
+          }
+          const resolved = await resolveComponents(source, session);
+          newIds = resolved.componentIds;
+
+          // Ganti total komponen lama (dimiliki penuh oleh induk ini).
+          await CalculatedFormulaComponentModel.deleteMany(
+            { calculated_formula_id: formula._id },
             { session },
           );
-        }
-        if (toRemove.length) {
-          await ComponentFormulaModel.updateMany(
-            { _id: { $in: toRemove } },
-            { $pull: { component_id: formula._id } },
+          const createdComponents =
+            await CalculatedFormulaComponentModel.create(
+              resolved.components.map((c) => ({
+                ...c,
+                calculated_formula_id: formula._id,
+              })),
+              { session, ordered: true },
+            );
+
+          formula.calc_type = "PER_COMPONENT";
+          formula.expression = [];
+          formula.components = createdComponents.map((c) => c._id);
+        } else {
+          // SINGLE. Bila hanya ganti tipe tanpa kirim ekspresi, pakai ekspresi
+          // yang ada (akan error bila kosong — memang butuh ekspresi).
+          const source = wantsExpression ? payload.expression : formula.expression;
+          const resolved = await resolveExpression(source, null, session);
+          newIds = resolved.componentIds;
+
+          // Bersihkan komponen bila sebelumnya PER_COMPONENT.
+          await CalculatedFormulaComponentModel.deleteMany(
+            { calculated_formula_id: formula._id },
             { session },
           );
+
+          formula.calc_type = "SINGLE";
+          formula.expression = resolved.tokens;
+          formula.components = [];
         }
 
-        formula.expression = tokens;
+        await syncComponentBackRefs(formula._id, oldIds, newIds, session);
       }
 
       await formula.save({ session });
@@ -432,6 +642,13 @@ controller.delete = async (req, res, next) => {
       await ComponentFormulaModel.updateMany(
         { component_id: formula._id },
         { $pull: { component_id: formula._id } },
+        { session },
+      );
+
+      // Ikut hapus (soft) komponen milik formula PER_COMPONENT ini.
+      await CalculatedFormulaComponentModel.updateMany(
+        { calculated_formula_id: formula._id },
+        { $set: { is_delete: true } },
         { session },
       );
 

@@ -12,6 +12,7 @@ const AppConfigModel = require("../app/models/AppConfig.model");
 const AppReleaseLogModel = require("../app/models/AppReleaseLog.model");
 const ComponentFormulaModel = require("../app/models/ComponentFormula.model");
 const CalculatedFormulaModel = require("../app/models/CalculatedFormula.model");
+const CalculatedFormulaComponentModel = require("../app/models/CalculatedFormulaComponent.model");
 const ChartOfAccountModel = require("../app/models/ChartOfAccount.model");
 const JournalEntryModel = require("../app/models/JournalEntry.model");
 
@@ -200,7 +201,9 @@ const seedCalculatedFormula = async (session) => {
         $set: {
           name: formula.name,
           slug: formula.slug,
+          calc_type: "SINGLE",
           expression: formula.expression,
+          components: [],
           decimal_place: formula.decimal_place,
           rounding: formula.rounding ?? "round",
           is_delete: false,
@@ -233,6 +236,114 @@ const seedCalculatedFormula = async (session) => {
       );
     }
   }
+
+  // ---------------------------------------------------------------
+  // Contoh formula PER_COMPONENT (Per Komponen): tiap komponen bernama
+  // dihitung TERPISAH dgn pembulatannya sendiri, lalu SEMUA dijumlahkan.
+  // Komponen disimpan di koleksi calculated_formula_component dan ditautkan
+  // ke field `components` pada master. Idempoten: master upsert by slug,
+  // komponennya di-replace tiap run.
+  // ---------------------------------------------------------------
+  const PER_COMPONENT_SEED = {
+    name: "Total Gaji (Per Komponen)",
+    slug: "total-gaji-per-komponen",
+    decimal_place: 2,
+    rounding: "round",
+    components: [
+      {
+        // Penghasilan = Base + Transport + Meal (2 desimal, terdekat)
+        name: "Penghasilan",
+        decimal_place: 2,
+        rounding: "round",
+        expression: [
+          comp("base-salary"),
+          op("+"),
+          comp("transport-allowance"),
+          op("+"),
+          comp("meal-allowance"),
+        ],
+      },
+      {
+        // Bonus Kinerja = Performance Bonus (0 desimal, ke atas)
+        name: "Bonus Kinerja",
+        decimal_place: 0,
+        rounding: "up",
+        expression: [comp("performance-bonus")],
+      },
+      {
+        // Potongan Pajak = Base * Tax Rate * -1 (0 desimal, ke bawah) → negatif
+        name: "Potongan Pajak",
+        decimal_place: 0,
+        rounding: "down",
+        expression: [
+          comp("base-salary"),
+          op("*"),
+          comp("tax-rate"),
+          op("*"),
+          num(-1),
+        ],
+      },
+    ],
+  };
+
+  const savedPerComp = await CalculatedFormulaModel.findOneAndUpdate(
+    { slug: PER_COMPONENT_SEED.slug },
+    {
+      $set: {
+        name: PER_COMPONENT_SEED.name,
+        slug: PER_COMPONENT_SEED.slug,
+        calc_type: "PER_COMPONENT",
+        expression: [],
+        decimal_place: PER_COMPONENT_SEED.decimal_place,
+        rounding: PER_COMPONENT_SEED.rounding,
+        is_delete: false,
+      },
+    },
+    { upsert: true, returnDocument: "after", session },
+  );
+
+  // Replace komponen milik master ini (buang lama, buat ulang berurutan).
+  await CalculatedFormulaComponentModel.deleteMany(
+    { calculated_formula_id: savedPerComp._id },
+    { session },
+  );
+  const createdComps = await CalculatedFormulaComponentModel.create(
+    PER_COMPONENT_SEED.components.map((c, i) => ({
+      name: c.name,
+      calculated_formula_id: savedPerComp._id,
+      expression: c.expression,
+      decimal_place: c.decimal_place,
+      rounding: c.rounding,
+      order: i,
+      is_delete: false,
+    })),
+    { session, ordered: true },
+  );
+  savedPerComp.components = createdComps.map((c) => c._id);
+  await savedPerComp.save({ session });
+
+  // Reverse-reference (component_id) untuk seluruh komponen yang dipakai.
+  const perCompUsedIds = [
+    ...new Set(
+      PER_COMPONENT_SEED.components
+        .flatMap((c) => c.expression)
+        .filter((t) => t.type === "component")
+        .map((t) => String(t.component)),
+    ),
+  ];
+  await ComponentFormulaModel.updateMany(
+    { component_id: savedPerComp._id },
+    { $pull: { component_id: savedPerComp._id } },
+    { session },
+  );
+  if (perCompUsedIds.length) {
+    await ComponentFormulaModel.updateMany(
+      { _id: { $in: perCompUsedIds } },
+      { $addToSet: { component_id: savedPerComp._id } },
+      { session },
+    );
+  }
+
   console.log("✅ [SEEDERS] Calculated formula upserted successfully!");
 };
 
@@ -578,6 +689,7 @@ const runMainSeeder = async () => {
         UsersModel,
         ComponentFormulaModel,
         CalculatedFormulaModel,
+        CalculatedFormulaComponentModel,
         ChartOfAccountModel,
       ].map((m) =>
         m.createCollection().catch((err) => {

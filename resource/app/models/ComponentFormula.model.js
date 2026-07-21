@@ -16,9 +16,18 @@ const ComponentFormulaSchema = new Schema(
       trim: true,
       lowercase: true,
     },
+    // Tipe rate komponen:
+    //  - FIXED      : rate tetap (fixed_rate).
+    //  - CALCULATED : rate hasil hitung (calculated_rate).
+    //  - EXTERNAL   : komponen tetap punya rate (calculated_rate), tapi saat
+    //                 dipakai di CalculatedFormula ia digabung dgn nilai LUAR
+    //                 "x" (target dari perhitungan koleksi lain). Nilai x TIDAK
+    //                 disimpan di sini, dan OPERATOR penggabungnya dipilih pada
+    //                 token ekspresi formula (x_operator di TokenSchema), bukan
+    //                 di komponen. Tampilan: "x {operator} rate", mis. "x + 3.2".
     rate_type: {
       type: String,
-      enum: ["FIXED", "CALCULATED"],
+      enum: ["FIXED", "CALCULATED", "EXTERNAL"],
       default: "FIXED",
       uppercase: true, // Memastikan data tersimpan sebagai uppercase
     },
@@ -40,6 +49,11 @@ const ComponentFormulaSchema = new Schema(
         validator: Number.isInteger,
         message: "Decimal place must be an integer",
       },
+    },
+    // Daftar akun (Chart of Account) yang terkait komponen ini.
+    accounts: {
+      type: [{ type: Schema.Types.ObjectId, ref: "ChartOfAccount" }],
+      default: [],
     },
     // Daftar CalculatedFormula (data master) yang sedang memakai komponen ini.
     // Dikelola otomatis oleh controller CalculatedFormula saat create/update/delete.
