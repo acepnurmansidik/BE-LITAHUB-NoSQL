@@ -15,6 +15,10 @@ const CalculatedFormulaModel = require("../app/models/CalculatedFormula.model");
 const CalculatedFormulaComponentModel = require("../app/models/CalculatedFormulaComponent.model");
 const ChartOfAccountModel = require("../app/models/ChartOfAccount.model");
 const JournalEntryModel = require("../app/models/JournalEntry.model");
+const AccountReceivableModel = require("../app/models/AccountReceivable.model");
+const AccountPayableModel = require("../app/models/AccountPayable.model");
+const JournalWriteOffModel = require("../app/models/JournalWriteOff.model");
+const SequenceModel = require("../app/models/Sequence.model");
 
 // ============================================================
 // SEEDER: COMPONENT FORMULA (data master rate)
@@ -657,7 +661,14 @@ const runFinanceSeeder = async () => {
   try {
     // Pastikan collection ada sebelum transaksi (hindari konflik catalog).
     await Promise.all(
-      [ChartOfAccountModel, JournalEntryModel].map((m) =>
+      [
+        ChartOfAccountModel,
+        JournalEntryModel,
+        AccountReceivableModel,
+        AccountPayableModel,
+        JournalWriteOffModel,
+        SequenceModel,
+      ].map((m) =>
         m.createCollection().catch((err) => {
           if (err?.code !== 48) throw err; // 48 = NamespaceExists → aman diabaikan
         }),

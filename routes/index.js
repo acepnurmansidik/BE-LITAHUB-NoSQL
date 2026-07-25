@@ -11,6 +11,9 @@ const componentFormulaRouter = require("../resource/app/router/componentFormula.
 const calculatedFormulaRouter = require("../resource/app/router/calculatedFormula.routes");
 const chartOfAccountRouter = require("../resource/app/router/chartOfAccount.routes");
 const journalEntryRouter = require("../resource/app/router/journalEntry.routes");
+const accountReceivableRouter = require("../resource/app/router/accountReceivable.routes");
+const accountPayableRouter = require("../resource/app/router/accountPayable.routes");
+const journalWriteOffRouter = require("../resource/app/router/journalWriteOff.routes");
 const AuthorizeUserLogin = require("../resource/middleware/authentification");
 
 router.use("/app-configs", appConfigRouter);
@@ -23,6 +26,9 @@ router.use("/component-formula", componentFormulaRouter);
 router.use("/calculated-formula", calculatedFormulaRouter);
 router.use("/chart-of-account", chartOfAccountRouter);
 router.use("/journal-entry", journalEntryRouter);
+router.use("/account-receivable", accountReceivableRouter);
+router.use("/account-payable", accountPayableRouter);
+router.use("/journal-write-off", journalWriteOffRouter);
 router.use(AuthorizeUserLogin);
 
 module.exports = router;

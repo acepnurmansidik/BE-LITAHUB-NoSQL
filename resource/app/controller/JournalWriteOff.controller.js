@@ -1,6 +1,9 @@
 const crudServices = require("../../helper/crudService");
 const { generateSequenceNo } = require("../../helper/sequence");
+const JournalWriteOffModel = require("../models/JournalWriteOff.model");
 const JournalEntryModel = require("../models/JournalEntry.model");
+const AccountReceivableModel = require("../models/AccountReceivable.model");
+const AccountPayableModel = require("../models/AccountPayable.model");
 const ChartOfAccountModel = require("../models/ChartOfAccount.model");
 const logActionModel = require("../models/LogAction.model");
 const BadRequest = require("../../utils/errors/bad-request");
@@ -10,24 +13,83 @@ const controller = {};
 const { runWithOptionalTransaction } = crudServices;
 
 const STATUSES = ["DRAFT", "POSTED"];
-
-// Bulatkan ke 2 desimal untuk menghindari galat floating-point saat cek balance.
+const WRITE_OFF_TYPES = ["RECEIVABLE", "PAYABLE", "INVENTORY", "OTHER"];
+const SOURCE_TYPES = [
+  "NONE",
+  "JOURNAL_ENTRY",
+  "ACCOUNT_RECEIVABLE",
+  "ACCOUNT_PAYABLE",
+];
+// Peta source_type → Model dokumen sumber (yang ditautkan write-off).
+const SOURCE_MODELS = {
+  JOURNAL_ENTRY: JournalEntryModel,
+  ACCOUNT_RECEIVABLE: AccountReceivableModel,
+  ACCOUNT_PAYABLE: AccountPayableModel,
+};
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
-// Nomor jurnal unik JE-YYYYMM-#### dari koleksi `sequence` (modul JE, atomik
-// & sekuensial per bulan/tahun).
-const generateEntryNo = (date, session) =>
-  generateSequenceNo({ module: "JE", prefix: "JE", date, session });
+const normalizeType = (v) => {
+  const t = String(v ?? "").toUpperCase();
+  return WRITE_OFF_TYPES.includes(t) ? t : "OTHER";
+};
 
-// Validasi & normalisasi baris jurnal. Memastikan tiap baris menunjuk akun
-// POSTABLE (bukan header) yang ada, hanya salah satu debit/credit terisi, lalu
-// mengembalikan { lines, total_debit, total_credit } dengan snapshot kode/nama.
-const buildLines = async (rawLines, session) => {
-  if (!Array.isArray(rawLines) || rawLines.length < 2) {
-    throw new BadRequest("Journal must have at least 2 lines.");
+// Validasi & snapshot dokumen sumber yang dihapus (Journal Entry / AR / AP).
+// Mengembalikan { source_type, source_id, source_no }.
+const resolveSource = async (rawType, rawId, session) => {
+  const type = SOURCE_TYPES.includes(String(rawType).toUpperCase())
+    ? String(rawType).toUpperCase()
+    : "NONE";
+  if (type === "NONE" || !rawId) {
+    return { source_type: "NONE", source_id: undefined, source_no: "" };
+  }
+  const Model = SOURCE_MODELS[type];
+  const src = await Model.findOne({
+    _id: rawId,
+    is_delete: { $ne: true },
+  }).session(session ?? null);
+  if (!src) {
+    throw new BadRequest("Source document (link) not found.");
+  }
+  return { source_type: type, source_id: src._id, source_no: src.entry_no };
+};
+
+// Efek write-off ke dokumen sumber (sesuai modelnya):
+//  - JOURNAL_ENTRY     → status jurnal jadi POSTED,
+//  - ACCOUNT_RECEIVABLE
+//    / ACCOUNT_PAYABLE  → status jadi WRITE_OFF & sisa (remaining) dinolkan
+//                         (paid_amount = total_amount).
+const applyWriteOffToSource = async (sourceType, sourceId, session) => {
+  if (!sourceId || sourceType === "NONE") return;
+
+  if (sourceType === "JOURNAL_ENTRY") {
+    await JournalEntryModel.updateOne(
+      { _id: sourceId, is_delete: { $ne: true } },
+      { $set: { status: "POSTED" } },
+      { session },
+    );
+    return;
   }
 
-  // Ambil semua akun yang direferensikan sekaligus.
+  const Model = SOURCE_MODELS[sourceType];
+  if (!Model) return;
+  const doc = await Model.findOne({
+    _id: sourceId,
+    is_delete: { $ne: true },
+  }).session(session ?? null);
+  if (!doc) return;
+  doc.status = "WRITE_OFF";
+  doc.total_remaining = 0; // remaining = 0
+  await doc.save({ session });
+};
+
+// Validasi & normalisasi baris. Minimal 2 baris, tiap baris menunjuk akun COA
+// POSTABLE (bukan header), hanya salah satu debit/credit terisi, dan total
+// debit HARUS sama dengan total credit (seimbang). Kode/nama akun di-snapshot.
+const buildLines = async (rawLines, session) => {
+  if (!Array.isArray(rawLines) || rawLines.length < 2) {
+    throw new BadRequest("Write off must have at least 2 lines.");
+  }
+
   const ids = [
     ...new Set(
       rawLines
@@ -44,18 +106,14 @@ const buildLines = async (rawLines, session) => {
 
   let totalDebit = 0;
   let totalCredit = 0;
-
   const lines = rawLines.map((raw, index) => {
     const acc = raw.account_id ? byId.get(String(raw.account_id)) : null;
-    if (!acc) {
-      throw new BadRequest(`Line ${index + 1}: account not found.`);
-    }
+    if (!acc) throw new BadRequest(`Line ${index + 1}: account not found.`);
     if (acc.is_header) {
       throw new BadRequest(
         `Line ${index + 1}: cannot post to a header account (${acc.code}).`,
       );
     }
-
     const debit = round2(raw.debit);
     const credit = round2(raw.credit);
     if (debit < 0 || credit < 0) {
@@ -69,10 +127,8 @@ const buildLines = async (rawLines, session) => {
     if (debit === 0 && credit === 0) {
       throw new BadRequest(`Line ${index + 1}: debit or credit is required.`);
     }
-
     totalDebit += debit;
     totalCredit += credit;
-
     return {
       account_id: acc._id,
       account_code: acc.code,
@@ -87,11 +143,11 @@ const buildLines = async (rawLines, session) => {
   totalCredit = round2(totalCredit);
   if (totalDebit !== totalCredit) {
     throw new BadRequest(
-      `Journal is not balanced: total debit (${totalDebit}) must equal total credit (${totalCredit}).`,
+      `Write off is not balanced: total debit (${totalDebit}) must equal total credit (${totalCredit}).`,
     );
   }
   if (totalDebit === 0) {
-    throw new BadRequest("Journal total cannot be zero.");
+    throw new BadRequest("Write off total cannot be zero.");
   }
 
   return { lines, total_debit: totalDebit, total_credit: totalCredit };
@@ -99,18 +155,19 @@ const buildLines = async (rawLines, session) => {
 
 controller.index = async (req, res, next) => {
   /*
-    #swagger.tags = ['JOURNAL ENTRY']
-    #swagger.summary = 'Journal Entry'
-    #swagger.description = 'Master jurnal umum (double-entry)'
+    #swagger.tags = ['JOURNAL WRITE OFF']
+    #swagger.summary = 'Journal Write Off'
+    #swagger.description = 'Register jurnal penghapusan (write-off)'
     #swagger.parameters['page'] = { default: 1 }
     #swagger.parameters['limit'] = { default: 10 }
-    #swagger.parameters['search'] = { default: '', description: 'search by entry_no / description / reference' }
+    #swagger.parameters['search'] = { default: '', description: 'entry_no / description / reference' }
     #swagger.parameters['status'] = { default: '', description: 'DRAFT | POSTED' }
+    #swagger.parameters['write_off_type'] = { default: '', description: 'RECEIVABLE | PAYABLE | INVENTORY | OTHER' }
   */
   try {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
-    const { search, status } = req.query;
+    const { search, status, write_off_type } = req.query;
 
     const query = { is_delete: { $ne: true } };
     if (search) {
@@ -123,14 +180,20 @@ controller.index = async (req, res, next) => {
     if (status && STATUSES.includes(String(status).toUpperCase())) {
       query.status = String(status).toUpperCase();
     }
+    if (
+      write_off_type &&
+      WRITE_OFF_TYPES.includes(String(write_off_type).toUpperCase())
+    ) {
+      query.write_off_type = String(write_off_type).toUpperCase();
+    }
 
     const [data, total] = await Promise.all([
-      JournalEntryModel.find(query)
+      JournalWriteOffModel.find(query)
         .sort({ date: -1, entry_no: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .select("-is_delete"),
-      JournalEntryModel.countDocuments(query),
+      JournalWriteOffModel.countDocuments(query),
     ]);
 
     res.status(200).json({
@@ -147,19 +210,18 @@ controller.index = async (req, res, next) => {
 
 controller.show = async (req, res, next) => {
   /*
-    #swagger.tags = ['JOURNAL ENTRY']
-    #swagger.summary = 'Journal Entry'
-    #swagger.description = 'Detail satu entri jurnal'
-    #swagger.parameters['id'] = { description: 'id journal entry' }
+    #swagger.tags = ['JOURNAL WRITE OFF']
+    #swagger.summary = 'Journal Write Off'
+    #swagger.description = 'Detail satu jurnal penghapusan'
+    #swagger.parameters['id'] = { description: 'id journal write off' }
   */
   try {
     const { id } = req.params;
-    const data = await JournalEntryModel.findOne({
+    const data = await JournalWriteOffModel.findOne({
       _id: id,
       is_delete: { $ne: true },
     }).select("-is_delete");
     if (!data) throw new BadRequest("Data not found!");
-
     res.status(200).json({
       success: true,
       message: "Data retrieved successfully!",
@@ -172,18 +234,12 @@ controller.show = async (req, res, next) => {
 
 controller.create = async (req, res, next) => {
   /*
-    #swagger.tags = ['JOURNAL ENTRY']
-    #swagger.summary = 'Journal Entry'
-    #swagger.description = 'Buat entri jurnal baru (harus balance)'
-    #swagger.parameters['obj'] = {
-      in: 'body',
-      description: 'Create journal entry',
-      schema: { $ref: '#/definitions/BodyJournalEntrySchema' }
-    }
+    #swagger.tags = ['JOURNAL WRITE OFF']
+    #swagger.summary = 'Journal Write Off'
+    #swagger.description = 'Buat jurnal penghapusan baru (harus balance)'
   */
   try {
     const payload = req.body;
-
     const date = payload.date ? new Date(payload.date) : new Date();
     if (Number.isNaN(date.getTime())) throw new BadRequest("Invalid date.");
 
@@ -196,30 +252,49 @@ controller.create = async (req, res, next) => {
         payload.lines,
         session,
       );
+      // Nomor urut dari koleksi `sequence` (modul WO, per bulan/tahun).
+      const entry_no = await generateSequenceNo({
+        module: "WO",
+        prefix: "WO",
+        date,
+        session,
+      });
+      const source = await resolveSource(
+        payload.source_type,
+        payload.source_id,
+        session,
+      );
 
-      const entry_no = await generateEntryNo(date, session);
-
-      const [entry] = await JournalEntryModel.create(
+      const [entry] = await JournalWriteOffModel.create(
         [
           {
             entry_no,
             date,
-            description: String(payload.description ?? "").trim(),
+            write_off_type: normalizeType(payload.write_off_type),
             reference: String(payload.reference ?? "").trim(),
+            description: String(payload.description ?? "").trim(),
             status,
             lines,
             total_debit,
             total_credit,
+            ...source,
           },
         ],
         { session },
+      );
+
+      // Terapkan efek write-off ke dokumen sumber (JE→POSTED, AR/AP→WRITE_OFF).
+      await applyWriteOffToSource(
+        source.source_type,
+        source.source_id,
+        session,
       );
 
       await logActionModel.create(
         [
           {
             target_id: entry._id,
-            source: JournalEntryModel.collection.collectionName,
+            source: JournalWriteOffModel.collection.collectionName,
             activities: [{ type: "CREATE", after: entry.toObject() }],
           },
         ],
@@ -232,7 +307,7 @@ controller.create = async (req, res, next) => {
     res.status(201).json({
       code: 201,
       success: true,
-      message: "Journal entry created successfully!",
+      message: "Journal write off created successfully!",
       data: result,
     });
   } catch (err) {
@@ -242,32 +317,25 @@ controller.create = async (req, res, next) => {
 
 controller.update = async (req, res, next) => {
   /*
-    #swagger.tags = ['JOURNAL ENTRY']
-    #swagger.summary = 'Journal Entry'
-    #swagger.description = 'Perbarui entri jurnal (entri POSTED tak bisa diubah)'
-    #swagger.parameters['id'] = { description: 'id journal entry' }
-    #swagger.parameters['obj'] = {
-      in: 'body',
-      description: 'Update journal entry',
-      schema: { $ref: '#/definitions/BodyJournalEntrySchema' }
-    }
+    #swagger.tags = ['JOURNAL WRITE OFF']
+    #swagger.summary = 'Journal Write Off'
+    #swagger.description = 'Perbarui jurnal penghapusan (entri POSTED tak bisa diubah)'
+    #swagger.parameters['id'] = { description: 'id journal write off' }
   */
   try {
     const { id } = req.params;
     const payload = req.body;
 
     const result = await runWithOptionalTransaction(async (session) => {
-      const entry = await JournalEntryModel.findOne({
+      const entry = await JournalWriteOffModel.findOne({
         _id: id,
         is_delete: { $ne: true },
       }).session(session);
       if (!entry) throw new BadRequest("Data not found!");
 
-      // Entri yang sudah POSTED terkunci — hanya boleh diubah statusnya (mis.
-      // dibatalkan kembali ke DRAFT bila diizinkan bisnis; di sini kita larang
-      // edit isi agar integritas buku besar terjaga).
+      // Entri POSTED terkunci (hanya boleh dikembalikan ke DRAFT).
       if (entry.status === "POSTED" && payload.status !== "DRAFT") {
-        throw new BadRequest("Posted journal entries cannot be edited.");
+        throw new BadRequest("Posted write off entries cannot be edited.");
       }
 
       const before = entry.toObject();
@@ -277,11 +345,14 @@ controller.update = async (req, res, next) => {
         if (Number.isNaN(date.getTime())) throw new BadRequest("Invalid date.");
         entry.date = date;
       }
-      if (payload.description !== undefined) {
-        entry.description = String(payload.description).trim();
+      if (payload.write_off_type !== undefined) {
+        entry.write_off_type = normalizeType(payload.write_off_type);
       }
       if (payload.reference !== undefined) {
         entry.reference = String(payload.reference).trim();
+      }
+      if (payload.description !== undefined) {
+        entry.description = String(payload.description).trim();
       }
       if (payload.status !== undefined) {
         const nextStatus = String(payload.status).toUpperCase();
@@ -291,13 +362,10 @@ controller.update = async (req, res, next) => {
           );
         }
         entry.status = nextStatus;
+        console.log("entry.status = nextStatus", nextStatus);
       }
 
-      // Baris hanya boleh diubah saat entri masih DRAFT.
       if (payload.lines !== undefined) {
-        if (entry.status === "POSTED") {
-          throw new BadRequest("Posted journal entries cannot be edited.");
-        }
         const { lines, total_debit, total_credit } = await buildLines(
           payload.lines,
           session,
@@ -307,13 +375,34 @@ controller.update = async (req, res, next) => {
         entry.total_credit = total_credit;
       }
 
+      // Tautan sumber (JE/AR/AP) bila dikirim.
+      if (
+        payload.source_type !== undefined ||
+        payload.source_id !== undefined
+      ) {
+        const source = await resolveSource(
+          payload.source_type ?? entry.source_type,
+          payload.source_id ?? entry.source_id,
+          session,
+        );
+        entry.source_type = source.source_type;
+        entry.source_id = source.source_id;
+        entry.source_no = source.source_no;
+        // Terapkan efek write-off ke dokumen sumber yang (baru) ditautkan.
+        await applyWriteOffToSource(
+          source.source_type,
+          source.source_id,
+          session,
+        );
+      }
+
       await entry.save({ session });
 
       await logActionModel.create(
         [
           {
             target_id: entry._id,
-            source: JournalEntryModel.collection.collectionName,
+            source: JournalWriteOffModel.collection.collectionName,
             activities: [{ type: "UPDATE", before, after: entry.toObject() }],
           },
         ],
@@ -326,7 +415,7 @@ controller.update = async (req, res, next) => {
     res.status(200).json({
       code: 200,
       success: true,
-      message: "Journal entry updated successfully!",
+      message: "Journal write off updated successfully!",
       data: result,
     });
   } catch (err) {
@@ -336,22 +425,22 @@ controller.update = async (req, res, next) => {
 
 controller.delete = async (req, res, next) => {
   /*
-    #swagger.tags = ['JOURNAL ENTRY']
-    #swagger.summary = 'Journal Entry'
-    #swagger.description = 'Hapus entri jurnal (soft delete). Entri POSTED ditolak.'
-    #swagger.parameters['id'] = { description: 'id journal entry' }
+    #swagger.tags = ['JOURNAL WRITE OFF']
+    #swagger.summary = 'Journal Write Off'
+    #swagger.description = 'Hapus jurnal penghapusan (soft delete). Entri POSTED ditolak.'
+    #swagger.parameters['id'] = { description: 'id journal write off' }
   */
   try {
     const { id } = req.params;
 
     const result = await runWithOptionalTransaction(async (session) => {
-      const entry = await JournalEntryModel.findOne({
+      const entry = await JournalWriteOffModel.findOne({
         _id: id,
         is_delete: { $ne: true },
       }).session(session);
       if (!entry) throw new BadRequest("Data not found!");
       if (entry.status === "POSTED") {
-        throw new BadRequest("Posted journal entries cannot be deleted.");
+        throw new BadRequest("Posted write off entries cannot be deleted.");
       }
 
       const before = entry.toObject();
@@ -362,7 +451,7 @@ controller.delete = async (req, res, next) => {
         [
           {
             target_id: entry._id,
-            source: JournalEntryModel.collection.collectionName,
+            source: JournalWriteOffModel.collection.collectionName,
             activities: [{ type: "DELETE", before, after: entry.toObject() }],
           },
         ],
@@ -375,7 +464,7 @@ controller.delete = async (req, res, next) => {
     res.status(200).json({
       code: 200,
       success: true,
-      message: "Journal entry deleted successfully!",
+      message: "Journal write off deleted successfully!",
       data: result,
     });
   } catch (err) {
