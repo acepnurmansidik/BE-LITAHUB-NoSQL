@@ -39,6 +39,32 @@ const clearCache = async (key) => {
 };
 
 /**
+ * Menghapus banyak cache sekaligus berdasarkan pola (mis. "ar:list:*").
+ * Dipakai saat data berubah agar seluruh varian cache list (per page/filter)
+ * ikut dibersihkan.
+ */
+const clearCacheByPattern = async (pattern) => {
+  try {
+    if (!global.redisClient) return;
+
+    const keys = [];
+    for await (const entry of global.redisClient.scanIterator({
+      MATCH: pattern,
+      COUNT: 100,
+    })) {
+      // node-redis bisa mengembalikan key satuan atau array per iterasi
+      if (Array.isArray(entry)) keys.push(...entry);
+      else keys.push(entry);
+    }
+
+    if (keys.length) await global.redisClient.del(keys);
+    console.log(`🗑️  Cache Cleared pattern: ${pattern} (${keys.length} keys)`);
+  } catch (error) {
+    console.error("Redis Clear Pattern Error:", error);
+  }
+};
+
+/**
  * Menimpa cache secara langsung (Overwrite)
  */
 const setCache = async ({ key, data, expiry = 3600 }) => {
@@ -72,4 +98,10 @@ const getCache = async (key) => {
   }
 };
 
-module.exports = { getOrSetCache, clearCache, setCache, getCache };
+module.exports = {
+  getOrSetCache,
+  clearCache,
+  clearCacheByPattern,
+  setCache,
+  getCache,
+};

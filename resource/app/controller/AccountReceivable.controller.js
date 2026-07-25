@@ -4,8 +4,15 @@ const AccountReceivableModel = require("../models/AccountReceivable.model");
 const ChartOfAccountModel = require("../models/ChartOfAccount.model");
 const logActionModel = require("../models/LogAction.model");
 const BadRequest = require("../../utils/errors/bad-request");
+const { getOrSetCache } = require("../../helper/redis-cache");
+const { emitEvent } = require("../../../config/socket-server");
 
 const controller = {};
+
+// Nama event = pattern cache. emitEvent(AR_EVENT, ...) otomatis membersihkan
+// cache "update_account_receivable:*" lalu broadcast ke semua client, jadi
+// client cukup listen event ini lalu refetch (lihat contoh useEffect di FE).
+const AR_EVENT = "update_account_receivable";
 
 const { runWithOptionalTransaction } = crudServices;
 
@@ -105,21 +112,31 @@ controller.index = async (req, res, next) => {
       query.status = String(status).toUpperCase();
     }
 
-    const [data, total] = await Promise.all([
-      AccountReceivableModel.find(query)
-        .sort({ date: -1, entry_no: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .select("-is_delete"),
-      AccountReceivableModel.countDocuments(query),
-    ]);
+    // Cache list di Redis (per kombinasi page/limit/search/status).
+    // Kalau Redis mati, getOrSetCache otomatis fallback ke query DB.
+    const cacheKey = `${AR_EVENT}:${page}:${limit}:${search || ""}:${
+      status || ""
+    }`;
+    const result = await getOrSetCache({
+      key: cacheKey,
+      expiry: 60,
+      fetchFunction: async () => {
+        const [data, total] = await Promise.all([
+          AccountReceivableModel.find(query)
+            .sort({ date: -1, entry_no: -1 })
+            .skip((page - 1) * limit)
+            .limit(limit)
+            .select("-is_delete"),
+          AccountReceivableModel.countDocuments(query),
+        ]);
+        return { data, page_size: total, current_page: page };
+      },
+    });
 
     res.status(200).json({
       success: true,
       message: "Data retrieved successfully!",
-      data,
-      page_size: total,
-      current_page: page,
+      ...result,
     });
   } catch (err) {
     next(err);
@@ -215,6 +232,8 @@ controller.create = async (req, res, next) => {
 
       return doc;
     });
+
+    await emitEvent(AR_EVENT);
 
     res.status(201).json({
       code: 201,
