@@ -15,6 +15,12 @@ const LogActivitiesModel = Schema(
       type: Schema.Types.Mixed,
       default: null,
     },
+    created_by: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: [false, "User is required"],
+      default: null,
+    },
   },
   { _id: false },
 );

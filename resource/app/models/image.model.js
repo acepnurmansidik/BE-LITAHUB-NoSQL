@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const { model, Schema } = mongoose;
 
-const ImageModel = Schema(
+const ImageSchema = Schema(
   {
     path: {
       type: String,
@@ -28,4 +28,5 @@ const ImageModel = Schema(
   },
 );
 
-module.exports = model("Image", ImageModel);
+module.exports =
+  mongoose.models.ImageSchema || mongoose.model("Image", ImageSchema);
