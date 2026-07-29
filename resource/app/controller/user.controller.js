@@ -21,7 +21,10 @@ controller.getAllUser = async (req, res, next) => {
     const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
     const { search, branch_id } = req.query;
 
-    const query = { is_delete: { $ne: true } };
+    const query = {
+      is_delete: { $ne: true },
+      name: { $ne: "Akun Super Admin" },
+    };
     if (branch_id) query.branch_id = branch_id;
     if (search) {
       query["$or"] = [{ name: { $regex: search, $options: "i" } }];
@@ -43,7 +46,7 @@ controller.getAllUser = async (req, res, next) => {
 
     const [data, total] = await Promise.all([
       UsersModel.find(query)
-        .populate("branch_id", "name code")
+        .populate(populateField)
         .sort({ _id: -1 })
         .skip((page - 1) * limit)
         .limit(limit),
