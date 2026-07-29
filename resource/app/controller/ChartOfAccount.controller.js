@@ -98,7 +98,7 @@ controller.index = async (req, res, next) => {
   */
   try {
     const { search, is_header } = req.query;
-    const query = {};
+    const query = { is_delete: { $ne: true } };
 
     if (is_header) query.is_header = is_header;
 

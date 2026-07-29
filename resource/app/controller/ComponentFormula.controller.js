@@ -15,29 +15,31 @@ controller.index = async (req, res, next) => {
     #swagger.parameters['page'] = { default: 1, description: 'page' }
   */
   try {
-    const query = {};
-    const { search, page, limit = 10 } = req.query;
-    const skip = (page - 1) * limit;
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
+    const { search, branch_id } = req.query;
 
-    const arrFilter = [];
+    const query = { is_delete: { $ne: true } };
     if (search) {
-      arrFilter.push({ name: { $regex: search, $options: "i" } });
+      query["$or"] = [{ name: { $regex: search, $options: "i" } }];
     }
-    if (arrFilter.length) query["$or"] = arrFilter;
 
-    const [page_size, result] = await Promise.all([
-      ComponentFormulaModel.countDocuments({
-        ...query,
-        is_delete: { $ne: true },
-      }),
-      crudServices.findAllPagination(ComponentFormulaModel, {
-        query,
-        skip,
-        limit,
-      }),
+    const [data, total] = await Promise.all([
+      ComponentFormulaModel.find(query)
+        .populate("branch_id", "name code")
+        .sort({ _id: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      ComponentFormulaModel.countDocuments(query),
     ]);
 
-    res.status(200).json({ ...result, page_size, current_page: Number(page) });
+    res.status(200).json({
+      success: true,
+      message: "Data retrieved successfully!",
+      data,
+      page_size: total,
+      current_page: page,
+    });
   } catch (err) {
     next(err);
   }
@@ -122,7 +124,10 @@ controller.delete = async (req, res, next) => {
     if (!component) throw new BadRequest("Data not found!");
 
     // Guard: komponen masih dipakai oleh satu atau lebih CalculatedFormula.
-    if (Array.isArray(component.component_id) && component.component_id.length) {
+    if (
+      Array.isArray(component.component_id) &&
+      component.component_id.length
+    ) {
       throw new BadRequest(
         "Cannot delete this component because it is still used by one or more calculated formulas. Remove it from those formulas first.",
       );

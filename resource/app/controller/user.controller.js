@@ -17,7 +17,16 @@ controller.getAllUser = async (req, res, next) => {
     #swagger.parameters['page'] = { default: 1, description: 'page' }
   */
   try {
-    const query = { is_delete: false };
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
+    const { search, branch_id } = req.query;
+
+    const query = { is_delete: { $ne: true } };
+    if (branch_id) query.branch_id = branch_id;
+    if (search) {
+      query["$or"] = [{ name: { $regex: search, $options: "i" } }];
+    }
+
     const populateField = [
       {
         path: "role_id",
@@ -31,25 +40,23 @@ controller.getAllUser = async (req, res, next) => {
       },
       { path: "auth_id", model: "AuthUser", select: "_id username email" },
     ];
-    const { search, page, limit = 10 } = req.query;
-    const skip = (page - 1) * limit;
 
-    const arrFilter = [];
-    if (search) {
-      arrFilter.push({ name: { $regex: search, $options: "i" } });
-    }
-    if (arrFilter.length) query["$or"] = arrFilter;
-
-    const [page_size, result] = await Promise.all([
+    const [data, total] = await Promise.all([
+      UsersModel.find(query)
+        .populate("branch_id", "name code")
+        .sort({ _id: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
       UsersModel.countDocuments(query),
-      crudServices.findAllPagination(UsersModel, {
-        query,
-        populateField,
-        skip,
-        limit,
-      }),
     ]);
-    res.status(200).json({ ...result, page_size, current_page: Number(page) });
+
+    res.status(200).json({
+      success: true,
+      message: "Data retrieved successfully!",
+      data,
+      page_size: total,
+      current_page: page,
+    });
   } catch (err) {
     next(err);
   }

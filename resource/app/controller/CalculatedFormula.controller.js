@@ -313,15 +313,15 @@ controller.index = async (req, res, next) => {
     #swagger.parameters['page'] = { default: 1, description: 'page' }
   */
   try {
-    const query = {};
-    const { search, page, limit = 10 } = req.query;
+    const query = { is_delete: { $ne: true } };
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
+    const { search } = req.query;
     const skip = (page - 1) * limit;
 
-    const arrFilter = [];
     if (search) {
-      arrFilter.push({ name: { $regex: search, $options: "i" } });
+      query["$or"] = [{ name: { $regex: search, $options: "i" } }];
     }
-    if (arrFilter.length) query["$or"] = arrFilter;
 
     const componentSelect =
       "name slug rate_type fixed_rate calculated_rate decimal_place";
@@ -356,20 +356,22 @@ controller.index = async (req, res, next) => {
       },
     ];
 
-    const [page_size, result] = await Promise.all([
-      CalculatedFormulaModel.countDocuments({
-        ...query,
-        is_delete: { $ne: true },
-      }),
-      crudServices.findAllPagination(CalculatedFormulaModel, {
-        query,
-        populateField,
-        skip,
-        limit,
-      }),
+    const [data, total] = await Promise.all([
+      CalculatedFormulaModel.find(query)
+        .populate("branch_id", "name code")
+        .sort({ _id: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      CalculatedFormulaModel.countDocuments(query),
     ]);
 
-    res.status(200).json({ ...result, page_size, current_page: Number(page) });
+    res.status(200).json({
+      success: true,
+      message: "Data retrieved successfully!",
+      data,
+      page_size: total,
+      current_page: page,
+    });
   } catch (err) {
     next(err);
   }

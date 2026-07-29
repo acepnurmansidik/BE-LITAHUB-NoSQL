@@ -33,43 +33,48 @@ controller.uploadImage = async (req, res, next) => {
 };
 
 controller.index = async (req, res, next) => {
-  const query = { is_delete: { $ne: true } };
-  const { search, type, page, limit = 10 } = req.query;
-  const skip = (page - 1) * limit;
-
-  if (type) query.type = type;
-
-  const arrFilter = [];
-  if (search) {
-    arrFilter.push({ value: { $regex: search, $options: "i" } });
-    arrFilter.push({ description: { $regex: search, $options: "i" } });
-  }
-  if (arrFilter.length) query["$or"] = arrFilter;
-
-  const populateField = [
-    { path: "icon_id", model: "Image", select: "_id path" },
-  ];
+  /*
+  #swagger.tags = ['REF PARAMETER']
+  #swagger.summary = 'ref parameter'
+  #swagger.description = 'untuk referensi group'
+  #swagger.parameters['search'] = { default: '', description: 'search by value / description' }
+  #swagger.parameters['type'] = { default: '', description: 'filter by type' }
+  #swagger.parameters['limit'] = { default: 10, description: 'limit' }
+  #swagger.parameters['page'] = { default: 1, description: 'page' }
+*/
   try {
-    /*
-    #swagger.tags = ['REF PARAMETER']
-    #swagger.summary = 'ref parameter'
-    #swagger.description = 'untuk referensi group'
-    #swagger.parameters['search'] = { default: '', description: 'search by value / description' }
-    #swagger.parameters['type'] = { default: '', description: 'filter by type' }
-    #swagger.parameters['limit'] = { default: 10, description: 'limit' }
-    #swagger.parameters['page'] = { default: 1, description: 'page' }
-  */
-    const [page_size, result] = await Promise.all([
+    const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
+    const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
+    const { search, branch_id } = req.query;
+
+    const query = { is_delete: { $ne: true } };
+    if (search) {
+      query["$or"] = [
+        { value: { $regex: search, $options: "i" } },
+        { type: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const populateField = [
+      { path: "icon_id", model: "Image", select: "_id path" },
+    ];
+
+    const [data, total] = await Promise.all([
+      ReffparamModel.find(query)
+        .populate("branch_id", "name code")
+        .sort({ _id: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
       ReffparamModel.countDocuments(query),
-      crudServices.findAllPagination(ReffparamModel, {
-        query,
-        populateField,
-        skip,
-        limit,
-      }),
     ]);
 
-    res.status(200).json({ ...result, page_size, current_page: Number(page) });
+    res.status(200).json({
+      success: true,
+      message: "Data retrieved successfully!",
+      data,
+      page_size: total,
+      current_page: page,
+    });
   } catch (err) {
     next(err);
   }
