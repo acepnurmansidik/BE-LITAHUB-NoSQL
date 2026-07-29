@@ -203,6 +203,13 @@ const USER_IAM = [
         children: [],
       },
       {
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link2-icon lucide-link-2"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 1 1 0 10h-2"/><line x1="8" x2="16" y1="12" y2="12"/></svg>`,
+        menu_name: "Reference Parameters",
+        path: "/setting/reference-parameters",
+        actions: ["view", "create", "update", "delete"],
+        children: [],
+      },
+      {
         icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-flask-conical-icon lucide-flask-conical"><path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2"/><path d="M6.453 15h11.094"/><path d="M8.5 2h7"/></svg>`,
         menu_name: "Formula",
         path: "/setting/formula",
@@ -234,16 +241,21 @@ const USER_IAM = [
           {
             name: "Building",
             path: "/setting/space-management/buildings",
-            actions: ["view", "create", "update", "delete"],
+            actions: ["view", "create", "update", "delete", "layout"],
           },
           {
             name: "Floor",
             path: "/setting/space-management/building-floors",
-            actions: ["view", "create", "update", "delete", "layout"],
+            actions: ["view", "create", "update", "delete"],
           },
           {
             name: "Room Unit",
             path: "/setting/space-management/room-units",
+            actions: ["view", "create", "update", "delete"],
+          },
+          {
+            name: "Layout Components",
+            path: "/setting/space-management/layout-components",
             actions: ["view", "create", "update", "delete"],
           },
         ],

@@ -211,4 +211,29 @@ globalService.createSlug = (text) => {
     .replace(/[^\w-]+/g, ""); // Opsional: Menghapus karakter non-alfanumerik kecuali "-" (agar URL bersih)
 };
 
+/**
+ * -----------------------------------------------
+ * | TITLE CASE
+ * -----------------------------------------------
+ * | Convert string to Title Case (Capitalize each word)
+ * |
+ * | @param {string} text - Input teks yang akan diubah formatnya
+ * | @returns {string} String dengan huruf kapital di setiap awal kata
+ * |
+ * | Example:
+ * | globalService.toTitleCase("mALL aNGGREK jAKARTA") -> "Mall Anggrek Jakarta"
+ * | globalService.toTitleCase("room_unit_detail")     -> "Room Unit Detail"
+ */
+globalService.toTitleCase = (text) => {
+  if (!text) return "";
+
+  return text
+    .toString() // Memastikan input adalah string
+    .toLowerCase() // Mengubah semua huruf menjadi kecil terlebih dahulu
+    .replace(/[_-]+/g, " ") // Mengganti tanda "_" atau "-" menjadi spasi
+    .trim() // Menghapus spasi di awal dan akhir string
+    .replace(/\s+/g, " ") // Menggabungkan multi-spasi menjadi satu spasi
+    .replace(/\b\w/g, (char) => char.toUpperCase()); // Mengubah huruf pertama setiap kata menjadi kapital
+};
+
 module.exports = globalService;

@@ -3,6 +3,7 @@ const RefParameterSchema = require("./ReffParameter.schema");
 const AppConfigSchema = require("./appConfig.schema");
 const FormulaSchema = require("./formula.schema");
 const FacilitySchema = require("./branch.schema");
+const LayoutComponentSchema = require("./LayoutComponent.schema");
 
 const GlobalSchema = {
   ...Authchema.Register,
@@ -12,6 +13,7 @@ const GlobalSchema = {
   ...AppConfigSchema,
   ...FormulaSchema,
   ...FacilitySchema,
+  ...LayoutComponentSchema,
 };
 
 module.exports = GlobalSchema;

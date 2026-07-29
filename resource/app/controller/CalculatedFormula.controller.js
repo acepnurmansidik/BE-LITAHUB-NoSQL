@@ -5,6 +5,7 @@ const CalculatedFormulaComponentModel = require("../models/CalculatedFormulaComp
 const ComponentFormulaModel = require("../models/ComponentFormula.model");
 const logActionModel = require("../models/LogAction.model");
 const BadRequest = require("../../utils/errors/bad-request");
+const LogActionModel = require("../models/LogAction.model");
 
 const controller = {};
 
@@ -28,8 +29,7 @@ const normalizeCalcType = (v) => {
 };
 
 // Rapikan array id akun (buang nilai kosong). Cast ObjectId dilakukan Mongoose.
-const sanitizeAccounts = (v) =>
-  (Array.isArray(v) ? v : []).filter(Boolean);
+const sanitizeAccounts = (v) => (Array.isArray(v) ? v : []).filter(Boolean);
 
 // Jenis assign akun. Default FORMULA_COMPONENT.
 const ACCOUNT_ASSIGNMENTS = ["FORMULA_COMPONENT", "COMPONENT_DETAIL"];
@@ -177,7 +177,9 @@ const resolveExpression = async (rawExpression, rawComponents, session) => {
     (t) => t.type === "component" || t.type === "constant",
   );
   if (!operandTokens.length) {
-    throw new BadRequest("At least one operand (component/number) is required!");
+    throw new BadRequest(
+      "At least one operand (component/number) is required!",
+    );
   }
 
   const componentIds = [
@@ -248,7 +250,9 @@ const resolveComponents = async (rawComponents, session) => {
     components.push({
       name,
       expression: tokens,
-      decimal_place: Number.isInteger(raw.decimal_place) ? raw.decimal_place : 2,
+      decimal_place: Number.isInteger(raw.decimal_place)
+        ? raw.decimal_place
+        : 2,
       rounding: normalizeRounding(raw.rounding) ?? "round",
       order: i,
       // ObjectId ComponentFormula yang ditambahkan pada komponen ini (opsional).
@@ -404,7 +408,9 @@ controller.create = async (req, res, next) => {
         rounding,
         // Akun hasil akhir (berlaku utk kedua tipe).
         accounts: sanitizeAccounts(payload.accounts),
-        account_assignment: normalizeAccountAssignment(payload.account_assignment),
+        account_assignment: normalizeAccountAssignment(
+          payload.account_assignment,
+        ),
         expression: [],
         components: [],
       };
@@ -432,7 +438,7 @@ controller.create = async (req, res, next) => {
 
         await syncComponentBackRefs(formula._id, [], componentIds, session);
 
-        await logActionModel.create(
+        await LogActionModel.create(
           [
             {
               target_id: formula._id,
@@ -447,11 +453,17 @@ controller.create = async (req, res, next) => {
       }
 
       // SINGLE (Ekspresi Tunggal): satu ekspresi utuh.
-      const resolved = await resolveExpression(payload.expression, null, session);
+      const resolved = await resolveExpression(
+        payload.expression,
+        null,
+        session,
+      );
       componentIds = resolved.componentIds;
       base.expression = resolved.tokens;
 
-      const [formula] = await CalculatedFormulaModel.create([base], { session });
+      const [formula] = await CalculatedFormulaModel.create([base], {
+        session,
+      });
 
       await syncComponentBackRefs(formula._id, [], componentIds, session);
 
@@ -571,7 +583,9 @@ controller.update = async (req, res, next) => {
         } else {
           // SINGLE. Bila hanya ganti tipe tanpa kirim ekspresi, pakai ekspresi
           // yang ada (akan error bila kosong — memang butuh ekspresi).
-          const source = wantsExpression ? payload.expression : formula.expression;
+          const source = wantsExpression
+            ? payload.expression
+            : formula.expression;
           const resolved = await resolveExpression(source, null, session);
           newIds = resolved.componentIds;
 
@@ -591,17 +605,23 @@ controller.update = async (req, res, next) => {
 
       await formula.save({ session });
 
-      await logActionModel.create(
-        [
-          {
-            target_id: formula._id,
+      await LogActionModel.findOneAndUpdate(
+        { target_id: id },
+        {
+          $setOnInsert: {
+            target_id: id,
             source: CalculatedFormulaModel.collection.collectionName,
-            activities: [
-              { type: "UPDATE", before, after: formula.toObject() },
-            ],
           },
-        ],
-        { session },
+          $push: {
+            activities: {
+              type: "UPDATE",
+              before,
+              after: formula.toObject(),
+              created_by: req?.login?.user_id ?? null,
+            },
+          },
+        },
+        { upsert: true, session },
       );
 
       return formula;
@@ -655,17 +675,23 @@ controller.delete = async (req, res, next) => {
       formula.is_delete = true;
       await formula.save({ session });
 
-      await logActionModel.create(
-        [
-          {
-            target_id: formula._id,
+      await LogActionModel.findOneAndUpdate(
+        { target_id: id },
+        {
+          $setOnInsert: {
+            target_id: id,
             source: CalculatedFormulaModel.collection.collectionName,
-            activities: [
-              { type: "DELETE", before, after: formula.toObject() },
-            ],
           },
-        ],
-        { session },
+          $push: {
+            activities: {
+              type: "DELETE",
+              before,
+              after: formula.toObject(),
+              created_by: req?.login?.user_id ?? null,
+            },
+          },
+        },
+        { upsert: true, session },
       );
 
       return formula;

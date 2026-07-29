@@ -1,6 +1,30 @@
 const mongoose = require("mongoose");
 const globalService = require("../../helper/global-func");
 
+// Data penempatan komponen di kanvas denah (Konva). Semua koordinat disimpan
+// dalam RUANG DASAR (base space = ukuran natural gambar denah) supaya presisi
+// & konsisten di layar kecil maupun besar. Penamaan field snake_case.
+const RoomComponentSchema = new mongoose.Schema(
+  {
+    // Referensi ke master komponen (bentuk) yang dipilih.
+    component_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "LayoutComponent",
+      default: null,
+    },
+    x: { type: Number, default: 0 }, // posisi X (base space)
+    y: { type: Number, default: 0 }, // posisi Y (base space)
+    width: { type: Number, default: 100 }, // lebar dasar
+    height: { type: Number, default: 100 }, // tinggi dasar
+    scale_x: { type: Number, default: 1 }, // skala horizontal
+    scale_y: { type: Number, default: 1 }, // skala vertikal
+    rotation: { type: Number, default: 0 }, // rotasi (derajat)
+    color: { type: String, default: "#3B82F6" }, // warna hex
+    opacity: { type: Number, default: 1, min: 0, max: 1 }, // 0..1
+  },
+  { _id: false },
+);
+
 const RoomUnitSchema = new mongoose.Schema(
   {
     branch_id: {
@@ -65,10 +89,11 @@ const RoomUnitSchema = new mongoose.Schema(
       type: Number, // Luas ruangan dalam meter persegi (m²)
       default: 0,
     },
+    // Fasilitas ruangan — array referensi ke ReffParameter (type: "amenities").
     amenities: [
       {
-        type: String,
-        trim: true, // Example: ["projector", "whiteboard", "ac", "tv", "lan_port"]
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "ReffParameter",
       },
     ],
     // Foto ruangan — mengacu ke koleksi Image (model Image).
@@ -89,6 +114,11 @@ const RoomUnitSchema = new mongoose.Schema(
       type: String,
       trim: true,
       default: "",
+    },
+    // Penempatan komponen pada kanvas denah lantai.
+    component: {
+      type: RoomComponentSchema,
+      default: () => ({}),
     },
   },
   {

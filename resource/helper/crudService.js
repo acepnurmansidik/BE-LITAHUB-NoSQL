@@ -1,5 +1,5 @@
 const { default: mongoose } = require("mongoose");
-const logActionModel = require("../app/models/LogAction.model");
+const LogActionModel = require("../app/models/LogAction.model");
 
 const crudServices = {};
 
@@ -178,7 +178,7 @@ crudServices.create = async (model, { data }) => {
       ],
     };
 
-    await logActionModel.create([log], { session });
+    await LogActionModel.create([log], { session });
 
     delete result.is_delete;
     delete result.updatedAt;
@@ -196,7 +196,7 @@ crudServices.update = async (model, { id, data }) => {
     // 1. Ambil data lama dan dokumen log (tanpa .lean() pada log agar bisa di-save)
     const [dataOld, dLogAction] = await Promise.all([
       model.findById(id).lean().session(session),
-      logActionModel.findOne({ target_id: id }).session(session),
+      LogActionModel.findOne({ target_id: id }).session(session),
     ]);
 
     if (!dataOld) throw new Error(`Data not found!`);
@@ -225,7 +225,7 @@ crudServices.update = async (model, { id, data }) => {
       dLogAction.activities.push(activity);
       await dLogAction.save({ session }); // Wajib pakai session agar masuk transaksi
     } else {
-      await logActionModel.create(
+      await LogActionModel.create(
         [
           {
             target_id: id,
@@ -251,7 +251,7 @@ crudServices.delete = async (model, { id, data }) => {
     // 1. Ambil data lama dan dokumen log (tanpa .lean() pada log agar bisa di-save)
     const [dExist, dLogAction] = await Promise.all([
       model.findById(id).lean().session(session),
-      logActionModel.findOne({ target_id: id }).session(session),
+      LogActionModel.findOne({ target_id: id }).session(session),
     ]);
 
     if (!dExist) throw new Error(`Data not found!`);
@@ -282,7 +282,7 @@ crudServices.delete = async (model, { id, data }) => {
       dLogAction.activities.push(activity);
       await dLogAction.save({ session }); // Wajib pakai session agar masuk transaksi
     } else {
-      await logActionModel.create(
+      await LogActionModel.create(
         [
           {
             target_id: id,

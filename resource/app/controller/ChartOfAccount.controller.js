@@ -1,7 +1,7 @@
 const crudServices = require("../../helper/crudService");
 const ChartOfAccountModel = require("../models/ChartOfAccount.model");
-const logActionModel = require("../models/LogAction.model");
 const BadRequest = require("../../utils/errors/bad-request");
+const LogActionModel = require("../models/LogAction.model");
 
 const controller = {};
 
@@ -200,7 +200,7 @@ controller.create = async (req, res, next) => {
         { session },
       );
 
-      await logActionModel.create(
+      await LogActionModel.create(
         [
           {
             target_id: account._id,
@@ -347,15 +347,23 @@ controller.update = async (req, res, next) => {
         session,
       );
 
-      await logActionModel.create(
-        [
-          {
-            target_id: account._id,
+      await LogActionModel.findOneAndUpdate(
+        { target_id: id },
+        {
+          $setOnInsert: {
+            target_id: id,
             source: ChartOfAccountModel.collection.collectionName,
-            activities: [{ type: "UPDATE", before, after: account.toObject() }],
           },
-        ],
-        { session },
+          $push: {
+            activities: {
+              type: "UPDATE",
+              before,
+              after: account.toObject(),
+              created_by: req?.login?.user_id ?? null,
+            },
+          },
+        },
+        { upsert: true, session },
       );
 
       return account;
@@ -403,15 +411,23 @@ controller.delete = async (req, res, next) => {
       account.is_delete = true;
       await account.save({ session });
 
-      await logActionModel.create(
-        [
-          {
-            target_id: account._id,
+      await LogActionModel.findOneAndUpdate(
+        { target_id: id },
+        {
+          $setOnInsert: {
+            target_id: id,
             source: ChartOfAccountModel.collection.collectionName,
-            activities: [{ type: "DELETE", before, after: account.toObject() }],
           },
-        ],
-        { session },
+          $push: {
+            activities: {
+              type: "DELETE",
+              before,
+              after: account.toObject(),
+              created_by: req?.login?.user_id ?? null,
+            },
+          },
+        },
+        { upsert: true, session },
       );
 
       return account;

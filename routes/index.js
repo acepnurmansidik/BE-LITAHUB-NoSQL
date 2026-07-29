@@ -19,6 +19,7 @@ const buildingRouter = require("../resource/app/router/building.routes");
 const buildingFloorRouter = require("../resource/app/router/buildingFloor.routes");
 const roomUnitRouter = require("../resource/app/router/roomUnit.routes");
 const AuthorizeUserLogin = require("../resource/middleware/authentification");
+const LayoutComponentRouter = require("../resource/app/router/layoutComponent.routes");
 
 router.use("/app-configs", appConfigRouter);
 router.use("/auth", authRouter);
@@ -26,6 +27,7 @@ router.use("/users", userRouter);
 router.use("/ref-parameter", refparamRouter);
 
 // SETTING
+router.use("/layout-component", LayoutComponentRouter);
 router.use("/component-formula", componentFormulaRouter);
 router.use("/calculated-formula", calculatedFormulaRouter);
 router.use("/role", roleRouter);

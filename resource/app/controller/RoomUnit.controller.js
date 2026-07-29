@@ -9,6 +9,23 @@ const LogActionModel = require("../models/LogAction.model");
 
 const controller = {};
 
+const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+// Cek apakah nama room sudah dipakai di lantai yang sama (case-insensitive).
+// `excludeId` untuk mengabaikan dokumen sendiri saat update.
+const nameExistsOnFloor = async (floorId, name, session, excludeId) => {
+  const query = {
+    floor_id: floorId,
+    is_delete: { $ne: true },
+    name: { $regex: `^${escapeRegex(String(name).trim())}$`, $options: "i" },
+  };
+  if (excludeId) query._id = { $ne: excludeId };
+  const found = await RoomUnitModel.findOne(query)
+    .session(session ?? null)
+    .lean();
+  return !!found;
+};
+
 controller.index = async (req, res, next) => {
   /*
     #swagger.tags = ['Room Unit']
@@ -43,6 +60,12 @@ controller.index = async (req, res, next) => {
         .populate("building_id", "name code")
         .populate("floor_id", "name code floor_level")
         .populate("image_id", "path")
+        .populate("amenities", "value type key")
+        .populate({
+          path: "component.component_id",
+          select: "name category image_id",
+          populate: { path: "image_id", select: "path" },
+        })
         .sort({ _id: -1 })
         .skip((page - 1) * limit)
         .limit(limit),
@@ -76,7 +99,8 @@ controller.show = async (req, res, next) => {
       .populate("branch_id", "name code")
       .populate("building_id", "name code")
       .populate("floor_id", "name code floor_level")
-      .populate("image_id", "path");
+      .populate("image_id", "path")
+      .populate("amenities", "value type key");
     if (!data) throw new NotFound(`Data with id '${id}' not found!`);
 
     res.status(200).json({
@@ -121,9 +145,26 @@ controller.create = async (req, res, next) => {
         floor_id: floor._id,
         is_delete: { $ne: true },
       }).session(session);
-      const index = existingCount + 1;
+      let index = existingCount + 1;
 
-      const name = payload.name || buildRoomName(index);
+      // Nama unik per lantai. Nama eksplisit yang bentrok ditolak; nama
+      // otomatis (Room N) di-increment sampai bebas.
+      let name;
+      if (payload.name) {
+        name = String(payload.name).trim();
+        if (await nameExistsOnFloor(floor._id, name, session)) {
+          throw new BadRequest(
+            `Room name '${name}' already exists on this floor.`,
+          );
+        }
+      } else {
+        name = buildRoomName(index);
+        // eslint-disable-next-line no-await-in-loop
+        while (await nameExistsOnFloor(floor._id, name, session)) {
+          index += 1;
+          name = buildRoomName(index);
+        }
+      }
       const [room] = await RoomUnitModel.create(
         [
           {
@@ -140,6 +181,8 @@ controller.create = async (req, res, next) => {
             amenities: payload.amenities,
             image_id: payload.image_id ?? null,
             notes: payload.notes,
+            // Data penempatan di kanvas denah (posisi/skala/rotasi/warna/opacity).
+            ...(payload.component ? { component: payload.component } : {}),
           },
         ],
         { session },
@@ -193,6 +236,20 @@ controller.update = async (req, res, next) => {
       if (!doc) throw new NotFound(`Data with id '${id}' not found!`);
 
       const before = doc.toObject();
+
+      // Validasi nama unik per lantai bila nama diubah.
+      if (payload.name !== undefined) {
+        const newName = String(payload.name).trim();
+        if (
+          newName.toLowerCase() !== String(doc.name).toLowerCase() &&
+          (await nameExistsOnFloor(doc.floor_id, newName, session, doc._id))
+        ) {
+          throw new BadRequest(
+            `Room name '${newName}' already exists on this floor.`,
+          );
+        }
+        payload.name = newName;
+      }
 
       // Kode, slug & relasi induk stabil setelah dibuat.
       delete payload.code;

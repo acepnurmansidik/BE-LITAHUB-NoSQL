@@ -2,8 +2,8 @@ const crudServices = require("../../helper/crudService");
 const { generateSequenceNo } = require("../../helper/sequence");
 const JournalEntryModel = require("../models/JournalEntry.model");
 const ChartOfAccountModel = require("../models/ChartOfAccount.model");
-const logActionModel = require("../models/LogAction.model");
 const BadRequest = require("../../utils/errors/bad-request");
+const LogActionModel = require("../models/LogAction.model");
 
 const controller = {};
 
@@ -215,7 +215,7 @@ controller.create = async (req, res, next) => {
         { session },
       );
 
-      await logActionModel.create(
+      await LogActionModel.create(
         [
           {
             target_id: entry._id,
@@ -309,15 +309,23 @@ controller.update = async (req, res, next) => {
 
       await entry.save({ session });
 
-      await logActionModel.create(
-        [
-          {
-            target_id: entry._id,
+      await LogActionModel.findOneAndUpdate(
+        { target_id: id },
+        {
+          $setOnInsert: {
+            target_id: id,
             source: JournalEntryModel.collection.collectionName,
-            activities: [{ type: "UPDATE", before, after: entry.toObject() }],
           },
-        ],
-        { session },
+          $push: {
+            activities: {
+              type: "UPDATE",
+              before,
+              after: entry.toObject(),
+              created_by: req?.login?.user_id ?? null,
+            },
+          },
+        },
+        { upsert: true, session },
       );
 
       return entry;
@@ -358,15 +366,23 @@ controller.delete = async (req, res, next) => {
       entry.is_delete = true;
       await entry.save({ session });
 
-      await logActionModel.create(
-        [
-          {
-            target_id: entry._id,
+      await LogActionModel.findOneAndUpdate(
+        { target_id: id },
+        {
+          $setOnInsert: {
+            target_id: id,
             source: JournalEntryModel.collection.collectionName,
-            activities: [{ type: "DELETE", before, after: entry.toObject() }],
           },
-        ],
-        { session },
+          $push: {
+            activities: {
+              type: "DELETE",
+              before,
+              after: entry.toObject(),
+              created_by: req?.login?.user_id ?? null,
+            },
+          },
+        },
+        { upsert: true, session },
       );
 
       return entry;

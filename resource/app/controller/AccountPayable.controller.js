@@ -2,8 +2,8 @@ const crudServices = require("../../helper/crudService");
 const { generateSequenceNo } = require("../../helper/sequence");
 const AccountPayableModel = require("../models/AccountPayable.model");
 const ChartOfAccountModel = require("../models/ChartOfAccount.model");
-const logActionModel = require("../models/LogAction.model");
 const BadRequest = require("../../utils/errors/bad-request");
+const LogActionModel = require("../models/LogAction.model");
 
 const controller = {};
 
@@ -202,7 +202,7 @@ controller.create = async (req, res, next) => {
         { session },
       );
 
-      await logActionModel.create(
+      await LogActionModel.create(
         [
           {
             target_id: doc._id,
@@ -291,15 +291,23 @@ controller.update = async (req, res, next) => {
 
       await doc.save({ session });
 
-      await logActionModel.create(
-        [
-          {
-            target_id: doc._id,
+      await LogActionModel.findOneAndUpdate(
+        { target_id: id },
+        {
+          $setOnInsert: {
+            target_id: id,
             source: AccountPayableModel.collection.collectionName,
-            activities: [{ type: "UPDATE", before, after: doc.toObject() }],
           },
-        ],
-        { session },
+          $push: {
+            activities: {
+              type: "UPDATE",
+              before,
+              after: doc.toObject(),
+              created_by: req?.login?.user_id ?? null,
+            },
+          },
+        },
+        { upsert: true, session },
       );
 
       return doc;
@@ -342,15 +350,23 @@ controller.delete = async (req, res, next) => {
       doc.is_delete = true;
       await doc.save({ session });
 
-      await logActionModel.create(
-        [
-          {
-            target_id: doc._id,
+      await LogActionModel.findOneAndUpdate(
+        { target_id: id },
+        {
+          $setOnInsert: {
+            target_id: id,
             source: AccountPayableModel.collection.collectionName,
-            activities: [{ type: "DELETE", before, after: doc.toObject() }],
           },
-        ],
-        { session },
+          $push: {
+            activities: {
+              type: "DELETE",
+              before,
+              after: doc.toObject(),
+              created_by: req?.login?.user_id ?? null,
+            },
+          },
+        },
+        { upsert: true, session },
       );
 
       return doc;
