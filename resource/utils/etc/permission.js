@@ -108,6 +108,77 @@ const USER_IAM = [
     ],
   },
   {
+    name: "MOD_SETTING",
+    title: "Setting",
+    permission: [
+      {
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rocket-icon lucide-rocket"><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09"/><path d="M9 12a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.4 22.4 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 .05 5 .05"/></svg>`,
+        menu_name: "App Config",
+        path: "/setting/app-config",
+        actions: ["view", "create", "update", "delete"],
+        children: [],
+      },
+      {
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link2-icon lucide-link-2"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 1 1 0 10h-2"/><line x1="8" x2="16" y1="12" y2="12"/></svg>`,
+        menu_name: "Reference Parameters",
+        path: "/setting/reference-parameters",
+        actions: ["view", "create", "update", "delete"],
+        children: [],
+      },
+      {
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-flask-conical-icon lucide-flask-conical"><path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2"/><path d="M6.453 15h11.094"/><path d="M8.5 2h7"/></svg>`,
+        menu_name: "Formula",
+        path: "/setting/formula",
+        actions: [],
+        children: [
+          {
+            name: "Calculated Formula",
+            path: "/setting/formula/calculated-formula",
+            actions: ["view", "create", "update", "delete"],
+          },
+          {
+            name: "Component",
+            path: "/setting/formula/component",
+            actions: ["view", "create", "update", "delete"],
+          },
+        ],
+      },
+      {
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-building-icon lucide-building"><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M12 6h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M16 6h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/><path d="M8 6h.01"/><path d="M9 22v-3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/><rect x="4" y="2" width="16" height="20" rx="2"/></svg>`,
+        menu_name: "Space Management",
+        path: "/setting/space-management",
+        actions: [],
+        children: [
+          {
+            name: "Branch",
+            path: "/setting/space-management/branches",
+            actions: ["view", "create", "update", "delete"],
+          },
+          {
+            name: "Building",
+            path: "/setting/space-management/buildings",
+            actions: ["view", "create", "update", "delete", "layout"],
+          },
+          {
+            name: "Floor",
+            path: "/setting/space-management/building-floors",
+            actions: ["view", "create", "update", "delete"],
+          },
+          {
+            name: "Room Unit",
+            path: "/setting/space-management/room-units",
+            actions: ["view", "create", "update", "delete"],
+          },
+          {
+            name: "Layout Components",
+            path: "/setting/space-management/layout-components",
+            actions: ["view", "create", "update", "delete"],
+          },
+        ],
+      },
+    ],
+  },
+  {
     name: "MOD_DOCUMENTATION",
     title: "Documentation",
     permission: [
@@ -187,77 +258,6 @@ const USER_IAM = [
             actions: [],
           },
           { name: "Etc", path: "/documentation/misc/etc", actions: [] },
-        ],
-      },
-    ],
-  },
-  {
-    name: "MOD_SETTING",
-    title: "Setting",
-    permission: [
-      {
-        icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rocket-icon lucide-rocket"><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09"/><path d="M9 12a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.4 22.4 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 .05 5 .05"/></svg>`,
-        menu_name: "App Config",
-        path: "/setting/app-config",
-        actions: ["view", "create", "update", "delete"],
-        children: [],
-      },
-      {
-        icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-link2-icon lucide-link-2"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 1 1 0 10h-2"/><line x1="8" x2="16" y1="12" y2="12"/></svg>`,
-        menu_name: "Reference Parameters",
-        path: "/setting/reference-parameters",
-        actions: ["view", "create", "update", "delete"],
-        children: [],
-      },
-      {
-        icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-flask-conical-icon lucide-flask-conical"><path d="M14 2v6a2 2 0 0 0 .245.96l5.51 10.08A2 2 0 0 1 18 22H6a2 2 0 0 1-1.755-2.96l5.51-10.08A2 2 0 0 0 10 8V2"/><path d="M6.453 15h11.094"/><path d="M8.5 2h7"/></svg>`,
-        menu_name: "Formula",
-        path: "/setting/formula",
-        actions: [],
-        children: [
-          {
-            name: "Calculated Formula",
-            path: "/setting/formula/calculated-formula",
-            actions: ["view", "create", "update", "delete"],
-          },
-          {
-            name: "Component",
-            path: "/setting/formula/component",
-            actions: ["view", "create", "update", "delete"],
-          },
-        ],
-      },
-      {
-        icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-building-icon lucide-building"><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M12 6h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M16 6h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/><path d="M8 6h.01"/><path d="M9 22v-3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/><rect x="4" y="2" width="16" height="20" rx="2"/></svg>`,
-        menu_name: "Space Management",
-        path: "/setting/space-management",
-        actions: [],
-        children: [
-          {
-            name: "Branch",
-            path: "/setting/space-management/branches",
-            actions: ["view", "create", "update", "delete"],
-          },
-          {
-            name: "Building",
-            path: "/setting/space-management/buildings",
-            actions: ["view", "create", "update", "delete", "layout"],
-          },
-          {
-            name: "Floor",
-            path: "/setting/space-management/building-floors",
-            actions: ["view", "create", "update", "delete"],
-          },
-          {
-            name: "Room Unit",
-            path: "/setting/space-management/room-units",
-            actions: ["view", "create", "update", "delete"],
-          },
-          {
-            name: "Layout Components",
-            path: "/setting/space-management/layout-components",
-            actions: ["view", "create", "update", "delete"],
-          },
         ],
       },
     ],

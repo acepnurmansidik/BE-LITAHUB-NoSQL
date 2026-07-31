@@ -26,7 +26,6 @@ controller.index = async (req, res, next) => {
 
     const [data, total] = await Promise.all([
       ComponentFormulaModel.find(query)
-        .populate("branch_id", "name code")
         .sort({ _id: -1 })
         .skip((page - 1) * limit)
         .limit(limit),

@@ -358,7 +358,6 @@ controller.index = async (req, res, next) => {
 
     const [data, total] = await Promise.all([
       CalculatedFormulaModel.find(query)
-        .populate("branch_id", "name code")
         .sort({ _id: -1 })
         .skip((page - 1) * limit)
         .limit(limit),
