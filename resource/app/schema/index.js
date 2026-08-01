@@ -4,6 +4,7 @@ const AppConfigSchema = require("./appConfig.schema");
 const FormulaSchema = require("./formula.schema");
 const FacilitySchema = require("./branch.schema");
 const LayoutComponentSchema = require("./LayoutComponent.schema");
+const InventorySchema = require("./inventory.schema");
 
 const GlobalSchema = {
   ...Authchema.Register,
@@ -14,6 +15,7 @@ const GlobalSchema = {
   ...FormulaSchema,
   ...FacilitySchema,
   ...LayoutComponentSchema,
+  ...InventorySchema,
 };
 
 module.exports = GlobalSchema;

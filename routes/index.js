@@ -20,6 +20,13 @@ const buildingFloorRouter = require("../resource/app/router/buildingFloor.routes
 const roomUnitRouter = require("../resource/app/router/roomUnit.routes");
 const AuthorizeUserLogin = require("../resource/middleware/authentification");
 const LayoutComponentRouter = require("../resource/app/router/layoutComponent.routes");
+const productCategoryRouter = require("../resource/app/router/productCategory.routes");
+const uomRouter = require("../resource/app/router/uom.routes");
+const productRouter = require("../resource/app/router/product.routes");
+const warehouseRouter = require("../resource/app/router/warehouse.routes");
+const supplierRouter = require("../resource/app/router/supplier.routes");
+const stockPositionRouter = require("../resource/app/router/stockPosition.routes");
+const stockMovementRouter = require("../resource/app/router/stockMovement.routes");
 
 router.use("/app-configs", appConfigRouter);
 router.use("/auth", authRouter);
@@ -45,6 +52,15 @@ router.use("/journal-entry", journalEntryRouter);
 router.use("/account-receivable", accountReceivableRouter);
 router.use("/account-payable", accountPayableRouter);
 router.use("/journal-write-off", journalWriteOffRouter);
+
+// INVENTORY
+router.use("/product-category", productCategoryRouter);
+router.use("/uom", uomRouter);
+router.use("/product", productRouter);
+router.use("/warehouse", warehouseRouter);
+router.use("/supplier", supplierRouter);
+router.use("/stock-position", stockPositionRouter);
+router.use("/stock-movement", stockMovementRouter);
 
 router.use(AuthorizeUserLogin);
 

@@ -5,7 +5,7 @@ const LayoutComponentSchema = Schema(
   {
     category: {
       type: String,
-      enum: ["SHAPES"],
+      enum: ["SHAPES", "TABLES"],
       default: "SHAPES",
       uppercase: true,
     },

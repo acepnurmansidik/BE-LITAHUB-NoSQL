@@ -19,6 +19,8 @@ const AccountReceivableModel = require("../app/models/AccountReceivable.model");
 const AccountPayableModel = require("../app/models/AccountPayable.model");
 const JournalWriteOffModel = require("../app/models/JournalWriteOff.model");
 const SequenceModel = require("../app/models/Sequence.model");
+const UomModel = require("../app/models/Uom.model");
+const ProductCategoryModel = require("../app/models/ProductCategory.model");
 
 // ============================================================
 // SEEDER: COMPONENT FORMULA (data master rate)
@@ -588,7 +590,222 @@ const seedChartOfAccount = async (session) => {
   console.log("✅ [SEEDERS] Chart of account upserted successfully!");
 };
 
+// ============================================================
+// SEEDER: JOURNAL ENTRY — Finance
+// Butuh COA sudah tersemai (mereferensikan akun POSTABLE by code). Idempoten:
+// dilewati bila entri contoh (dikenali dari `reference`) sudah ada.
+// ============================================================
+const seedJournalEntry = async (session) => {
+  const REF = "SEED-CASH-SALE";
+
+  const exists = await JournalEntryModel.findOne({ reference: REF }).session(
+    session,
+  );
+  if (exists) {
+    console.log("ℹ️ [SEEDERS] Journal entry sample already exists, skipped.");
+    return;
+  }
+
+  // Ambil akun postable contoh berdasarkan kode final (materialized path).
+  const [cash, sales] = await Promise.all([
+    ChartOfAccountModel.findOne({ code: "1000.1100.1110.1111" }).session(
+      session,
+    ),
+    ChartOfAccountModel.findOne({ code: "7000.7100" }).session(session),
+  ]);
+  if (!cash || !sales) {
+    console.log(
+      "⚠️ [SEEDERS] Journal entry sample skipped (referenced COA not found).",
+    );
+    return;
+  }
+
+  const lines = [
+    {
+      account_id: cash._id,
+      account_code: cash.code,
+      account_name: cash.name,
+      description: "Cash received from product sale",
+      debit: 1500000,
+      credit: 0,
+    },
+    {
+      account_id: sales._id,
+      account_code: sales.code,
+      account_name: sales.name,
+      description: "Product sale revenue",
+      debit: 0,
+      credit: 1500000,
+    },
+  ];
+
+  const now = new Date();
+  const ym = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  await JournalEntryModel.create(
+    [
+      {
+        entry_no: `JE-${ym}-0001`,
+        date: now,
+        description: "Sample cash sale (seed)",
+        reference: REF,
+        status: "POSTED",
+        lines,
+        total_debit: 1500000,
+        total_credit: 1500000,
+      },
+    ],
+    { session },
+  );
+  console.log("✅ [SEEDERS] Journal entry sample upserted successfully!");
+};
+
 // Seeder Finance berdiri sendiri — dipanggil terpisah dari runMainSeeder.
+// ============================================================
+// SEEDER: UOM (Unit of Measure) — data master lengkap. Idempoten: upsert by code.
+// ============================================================
+const UOM_SEED = [
+  { name: "Pieces", code: "PCS", description: "Satuan buah" },
+  { name: "Unit", code: "UNIT", description: "Satuan unit" },
+  { name: "Box", code: "BOX", description: "Kotak" },
+  { name: "Carton", code: "CTN", description: "Karton" },
+  { name: "Pack", code: "PACK", description: "Bungkus" },
+  { name: "Dozen", code: "DZ", description: "Lusin (12)" },
+  { name: "Pair", code: "PR", description: "Pasang" },
+  { name: "Set", code: "SET", description: "Set" },
+  { name: "Roll", code: "ROLL", description: "Gulung" },
+  { name: "Sheet", code: "SHT", description: "Lembar" },
+  { name: "Bottle", code: "BTL", description: "Botol" },
+  { name: "Can", code: "CAN", description: "Kaleng" },
+  { name: "Bag", code: "BAG", description: "Karung / kantong" },
+  { name: "Kilogram", code: "KG", description: "Berat kilogram" },
+  { name: "Gram", code: "G", description: "Berat gram" },
+  { name: "Milligram", code: "MG", description: "Berat miligram" },
+  { name: "Ton", code: "TON", description: "Berat ton" },
+  { name: "Liter", code: "L", description: "Volume liter" },
+  { name: "Milliliter", code: "ML", description: "Volume mililiter" },
+  { name: "Meter", code: "M", description: "Panjang meter" },
+  { name: "Centimeter", code: "CM", description: "Panjang sentimeter" },
+  { name: "Millimeter", code: "MM", description: "Panjang milimeter" },
+  { name: "Kilometer", code: "KM", description: "Panjang kilometer" },
+  { name: "Square Meter", code: "M2", description: "Luas meter persegi" },
+  { name: "Cubic Meter", code: "M3", description: "Volume meter kubik" },
+  { name: "Hour", code: "HR", description: "Waktu jam" },
+  { name: "Day", code: "DAY", description: "Waktu hari" },
+];
+
+const seedUom = async (session) => {
+  for (const uom of UOM_SEED) {
+    await UomModel.findOneAndUpdate(
+      { code: uom.code },
+      {
+        $set: {
+          name: uom.name,
+          code: uom.code,
+          description: uom.description ?? "",
+          is_active: true,
+          is_delete: false,
+        },
+      },
+      { upsert: true, session },
+    );
+  }
+  console.log("✅ [SEEDERS] UOM upserted successfully!");
+};
+
+// ============================================================
+// SEEDER: PRODUCT CATEGORY — beberapa kategori lengkap, tiap kategori punya
+// coa_list (disimpan di collection terpisah product_category_coas). Kode COA
+// dilihat dari ChartOfAccount yang sudah di-seed sebelumnya (by code).
+// Idempoten: upsert kategori by slug; upsert baris coa by (category, title).
+// ============================================================
+const PRODUCT_CATEGORY_SEED = [
+  {
+    name: "Raw Material",
+    prefix: "RAW",
+    coa_list: [
+      { title: "Inventory Account", account_code: "1130" },
+      { title: "Expense Account", account_code: "5100" },
+    ],
+  },
+  {
+    name: "Finished Goods",
+    prefix: "FG",
+    coa_list: [
+      { title: "Inventory Account", account_code: "1130" },
+      { title: "Sales Account", account_code: "4100" },
+      { title: "COGS Account", account_code: "5100" },
+    ],
+  },
+  {
+    name: "Trading Goods",
+    prefix: "TRD",
+    coa_list: [
+      { title: "Inventory Account", account_code: "1130" },
+      { title: "Sales Account", account_code: "4100" },
+      { title: "COGS Account", account_code: "5100" },
+    ],
+  },
+  {
+    name: "Consumable",
+    prefix: "CONS",
+    coa_list: [{ title: "Expense Account", account_code: "5100" }],
+  },
+  {
+    name: "Spare Part",
+    prefix: "SPR",
+    coa_list: [
+      { title: "Inventory Account", account_code: "1130" },
+      { title: "Expense Account", account_code: "5100" },
+    ],
+  },
+  {
+    name: "Packaging",
+    prefix: "PKG",
+    coa_list: [
+      { title: "Inventory Account", account_code: "1130" },
+      { title: "Expense Account", account_code: "5100" },
+    ],
+  },
+];
+
+const seedProductCategory = async (session) => {
+  for (const cat of PRODUCT_CATEGORY_SEED) {
+    const slug = globalService.createSlug(cat.name);
+
+    // Bangun line_accounts (embedded): cari COA by code; lewati yang tak ada.
+    const line_accounts = [];
+    for (const row of cat.coa_list) {
+      const account = await ChartOfAccountModel.findOne({
+        code: row.account_code,
+        is_delete: { $ne: true },
+      }).session(session);
+      if (!account) continue;
+      line_accounts.push({
+        title: row.title,
+        account_id: account._id,
+        product_category_id: null,
+      });
+    }
+
+    await ProductCategoryModel.findOneAndUpdate(
+      { slug },
+      {
+        $set: {
+          name: cat.name,
+          prefix: cat.prefix,
+          slug,
+          line_accounts,
+          is_active: true,
+          is_delete: false,
+        },
+      },
+      { upsert: true, session },
+    );
+  }
+  console.log("✅ [SEEDERS] Product categories & line accounts upserted!");
+};
+
 const runFinanceSeeder = async () => {
   try {
     // Pastikan collection ada sebelum transaksi (hindari konflik catalog).
@@ -600,6 +817,8 @@ const runFinanceSeeder = async () => {
         AccountPayableModel,
         JournalWriteOffModel,
         SequenceModel,
+        UomModel,
+        ProductCategoryModel,
       ].map((m) =>
         m.createCollection().catch((err) => {
           if (err?.code !== 48) throw err; // 48 = NamespaceExists → aman diabaikan
@@ -611,6 +830,9 @@ const runFinanceSeeder = async () => {
       await seedChartOfAccount(session);
       // Jurnal contoh butuh COA di atas sudah ada.
       await seedJournalEntry(session);
+      // Inventory: UOM (master) & Product Category (coa_list mengacu ke COA).
+      await seedUom(session);
+      await seedProductCategory(session);
     });
   } catch (error) {
     console.error("❌ Finance seeder failed with error:", error);
