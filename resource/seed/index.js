@@ -875,6 +875,7 @@ const runMainSeeder = async () => {
           name: mod.name,
           title: mod.title,
           slug: globalService.createSlug(mod.name),
+          sequence: mod.sequence ?? 0,
           permission: mod.permission.map((perm) => ({
             icon: perm.icon,
             menu_name: perm.menu_name,
@@ -900,9 +901,9 @@ const runMainSeeder = async () => {
       // SEEDER 2: PROSES MEMBUAT ROLES
       // ==========================================
 
-      const allModules = await ModuleModel.find({ is_delete: false }).session(
-        session,
-      );
+      const allModules = await ModuleModel.find({ is_delete: false })
+        .sort({ sequence: 1 })
+        .session(session);
 
       const roleSlug = "super-ultraman";
       const superUltramanData = {
@@ -936,6 +937,7 @@ const runMainSeeder = async () => {
         const moduleItem = {
           name: mod.name,
           title: mod.title,
+          sequence: mod.sequence ?? 0,
           permission: [],
         };
 

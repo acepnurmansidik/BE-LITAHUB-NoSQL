@@ -29,6 +29,8 @@ const ModuleSchema = new Schema(
     name: { type: String, required: true, unique: true },
     title: { type: String, required: true },
     slug: { type: String, required: true, unique: true },
+    // Urutan tampil module (makin kecil makin atas)
+    sequence: { type: Number, default: 0 },
     permission: [PermissionSchema],
     is_delete: { type: Boolean, default: false },
     created_by: { type: mongoose.Types.ObjectId, ref: "User", default: null },

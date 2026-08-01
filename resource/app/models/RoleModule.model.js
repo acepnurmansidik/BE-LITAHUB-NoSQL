@@ -34,6 +34,8 @@ const RoleModuleSchema = new Schema(
     },
     name: { type: String, required: true },
     title: { type: String, required: true },
+    // Urutan tampil module milik role (mengikuti sequence di master module)
+    sequence: { type: Number, default: 0 },
     permission: [RolePermissionSchema],
     is_delete: { type: Boolean, required: true, default: false },
   },
