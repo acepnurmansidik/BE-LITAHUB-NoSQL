@@ -34,6 +34,15 @@ const SCALAR_BROWSER_DIR = path.join(
 const TAG_GROUPS = [
   {
     name: "Authentication & Access",
+    // Deskripsi group (Markdown). Ditempelkan ke tag pertama ("Authentication")
+    // sehingga tampil tepat di bawah nama group di Scalar.
+    description:
+      "Modul autentikasi & kontrol akses.\n\n" +
+      "**Alur umum:** user login (`/auth/sign-in`) → menerima **JWT** → token dikirim di header `Authorization` pada tiap request. Hak akses ditentukan dari **Role** yang memiliki kumpulan **Module** (menu + aksi CRUD).\n\n" +
+      "- **Authentication** — registrasi, login, recovery password.\n" +
+      "- **User & IAM** — kelola user & permission access.\n" +
+      "- **Role** — definisi peran + hak akses per module.\n" +
+      "- **Module** — daftar menu/fitur yang dapat diakses.",
     tags: ["Authentication", "User & IAM", "Role", "Module"],
   },
   {
@@ -87,14 +96,41 @@ const TAG_GROUPS = [
 
 // Bangun spec ber-grouping: tambahkan `x-tagGroups` + `tags` (urut sesuai
 // grup) tanpa mengubah dokumen asli.
+//
+// Catatan: `x-tagGroups` (standar Redoc) TIDAK punya field deskripsi, jadi
+// Scalar tak merender `description` yang ditaruh langsung di objek group.
+// Yang dirender Scalar adalah deskripsi per-TAG (root `tags[]`). Karena itu:
+//   - `group.description`      -> ditempelkan ke TAG PERTAMA grup (tampil
+//                                 tepat di bawah nama group; cocok untuk
+//                                 gambaran umum / logic section).
+//   - `group.tagDescriptions`  -> map { "Nama Tag": "deskripsi markdown" }
+//                                 untuk deskripsi tiap fitur (opsional).
+// Semua mendukung Markdown (heading, list, gambar `![alt](/path)`).
 const buildGroupedSpec = (swaggerDocument) => {
-  const orderedTags = TAG_GROUPS.flatMap((g) => g.tags).map((name) => ({
-    name,
-  }));
+  const descByTag = {};
+  for (const group of TAG_GROUPS) {
+    if (group.description && group.tags.length) {
+      descByTag[group.tags[0]] = group.description;
+    }
+    if (group.tagDescriptions) {
+      for (const [tag, desc] of Object.entries(group.tagDescriptions)) {
+        descByTag[tag] = desc;
+      }
+    }
+  }
+
+  const orderedTags = TAG_GROUPS.flatMap((g) => g.tags).map((name) =>
+    descByTag[name] ? { name, description: descByTag[name] } : { name },
+  );
+
+  // x-tagGroups cukup name + tags (buang field non-standar seperti description
+  // agar spec tetap bersih; deskripsi sudah dipindah ke tag).
+  const cleanGroups = TAG_GROUPS.map((g) => ({ name: g.name, tags: g.tags }));
+
   return {
     ...swaggerDocument,
     tags: orderedTags,
-    "x-tagGroups": TAG_GROUPS,
+    "x-tagGroups": cleanGroups,
   };
 };
 
