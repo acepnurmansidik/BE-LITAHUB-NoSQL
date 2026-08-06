@@ -63,9 +63,9 @@ const buildRoleModulePermission = (permissions = []) =>
 
 controller.getAllModule = async (req, res, next) => {
   /*
-    #swagger.tags = ['MODULE']
-    #swagger.summary = 'Module'
-    #swagger.description = 'untuk referensi group'
+    #swagger.tags = ['Module']
+    #swagger.summary = 'List Modules'
+    #swagger.description = 'Retrieve a paginated list of modules with optional search.'
     #swagger.parameters['search'] = { default: '', description: 'search by value' }
     #swagger.parameters['limit'] = { default: 10, description: 'limit' }
     #swagger.parameters['page'] = { default: 1, description: 'page' }
@@ -99,12 +99,12 @@ controller.getAllModule = async (req, res, next) => {
 controller.createModule = async (req, res, next) => {
   try {
     /*
-    #swagger.tags = ['MODULE']
-    #swagger.summary = 'Module'
-    #swagger.description = 'untuk referensi group'
+    #swagger.tags = ['Module']
+    #swagger.summary = 'Create Module'
+    #swagger.description = 'Create a new module with its menu permission tree.'
     #swagger.parameters['obj'] = {
       in: 'body',
-      description: 'Create role',
+      description: 'Create Module',
       schema: { $ref: '#/definitions/BodyModuleSchema' }
     }
   */
@@ -128,13 +128,13 @@ controller.createModule = async (req, res, next) => {
 controller.updateModule = async (req, res, next) => {
   try {
     /*
-    #swagger.tags = ['MODULE']
-    #swagger.summary = 'Module'
-    #swagger.description = 'untuk referensi group'
-    #swagger.parameters['id'] = { description: 'id role' }
+    #swagger.tags = ['Module']
+    #swagger.summary = 'Update Module'
+    #swagger.description = 'Update a module and sync its permissions to related roles.'
+    #swagger.parameters['id'] = { description: 'Module ID' }
     #swagger.parameters['obj'] = {
       in: 'body',
-      description: 'Update role',
+      description: 'Update Module',
       schema: { $ref: '#/definitions/BodyModuleSchema' }
     }
   */
@@ -192,10 +192,10 @@ controller.updateModule = async (req, res, next) => {
 controller.deleteModule = async (req, res, next) => {
   try {
     /*
-    #swagger.tags = ['MODULE']
-    #swagger.summary = 'Module'
-    #swagger.description = 'untuk referensi group'
-    #swagger.parameters['id'] = { description: 'id role' }
+    #swagger.tags = ['Module']
+    #swagger.summary = 'Delete Module (soft delete)'
+    #swagger.description = 'Soft delete a module by its ID.'
+    #swagger.parameters['id'] = { description: 'Module ID' }
   */
     const { id } = req.params;
     const result = await crudServices.delete(ModuleModel, { id });

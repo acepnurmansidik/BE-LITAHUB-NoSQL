@@ -15,8 +15,9 @@ const MODULE_NAME = PurchaseRequestModel.collection.collectionName;
 
 controller.index = async (req, res, next) => {
   /*
-    #swagger.tags = ['PURCHASE REQUEST']
-    #swagger.summary = 'Purchase Request'
+    #swagger.tags = ['Purchase Request']
+    #swagger.summary = 'List Purchase Requests'
+    #swagger.description = 'Return a paginated list of purchase requests with optional search and status filters.'
     #swagger.parameters['page'] = { default: 1 }
     #swagger.parameters['limit'] = { default: 10 }
     #swagger.parameters['search'] = { default: '', description: 'request_no / reference / description' }
@@ -87,8 +88,10 @@ controller.index = async (req, res, next) => {
 
 controller.show = async (req, res, next) => {
   /*
-    #swagger.tags = ['PURCHASE REQUEST']
-    #swagger.parameters['id'] = { description: 'id purchase request' }
+    #swagger.tags = ['Purchase Request']
+    #swagger.summary = 'Get Purchase Request detail'
+    #swagger.description = 'Return a single purchase request with its detail items by id.'
+    #swagger.parameters['id'] = { description: 'purchase request id' }
   */
   try {
     const data = await PurchaseRequestModel.findOne({
@@ -118,8 +121,14 @@ controller.show = async (req, res, next) => {
 
 controller.create = async (req, res, next) => {
   /*
-    #swagger.tags = ['PURCHASE REQUEST']
-    #swagger.summary = 'Buat purchase request baru (default DRAFT)'
+    #swagger.tags = ['Purchase Request']
+    #swagger.summary = 'Create Purchase Request'
+    #swagger.description = 'Create a new purchase request (defaults to DRAFT status) with its detail items.'
+    #swagger.parameters['obj'] = {
+      in: 'body',
+      description: 'Create Purchase Request',
+      schema: { $ref: '#/definitions/BodyPurchaseRequestSchema' }
+    }
   */
   try {
     const payload = req.body;
@@ -202,9 +211,15 @@ controller.create = async (req, res, next) => {
 
 controller.update = async (req, res, next) => {
   /*
-    #swagger.tags = ['PURCHASE REQUEST']
-    #swagger.summary = 'Perbarui PR / submit (status DRAFT->SUBMITTED)'
-    #swagger.parameters['id'] = { description: 'id purchase request' }
+    #swagger.tags = ['Purchase Request']
+    #swagger.summary = 'Update Purchase Request / submit'
+    #swagger.description = 'Update a purchase request or submit it (status DRAFT to SUBMITTED); locked once submitted.'
+    #swagger.parameters['id'] = { description: 'purchase request id' }
+    #swagger.parameters['obj'] = {
+      in: 'body',
+      description: 'Update Purchase Request',
+      schema: { $ref: '#/definitions/BodyPurchaseRequestSchema' }
+    }
   */
   try {
     const { id } = req.params;
@@ -301,9 +316,10 @@ controller.update = async (req, res, next) => {
 
 controller.delete = async (req, res, next) => {
   /*
-    #swagger.tags = ['PURCHASE REQUEST']
-    #swagger.summary = 'Hapus PR (soft delete). Ditolak bila sudah SUBMITTED / sudah dibuatkan PO.'
-    #swagger.parameters['id'] = { description: 'id purchase request' }
+    #swagger.tags = ['Purchase Request']
+    #swagger.summary = 'Delete Purchase Request (soft delete)'
+    #swagger.description = 'Soft delete a purchase request; rejected if already submitted or already linked to a purchase order.'
+    #swagger.parameters['id'] = { description: 'purchase request id' }
   */
   try {
     const { id } = req.params;

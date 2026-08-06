@@ -16,9 +16,9 @@ controller.Register = async (req, res, next) => {
   session.startTransaction();
   try {
     /* 
-    #swagger.tags = ['Master Role']
-    #swagger.summary = 'role user'
-    #swagger.description = 'every user has role for access'
+    #swagger.tags = ['Authentication']
+    #swagger.summary = 'Register a new user account'
+    #swagger.description = 'Create a new user account and issue authentication credentials.'
     #swagger.parameters['obj'] = {
       in: 'body',
       description: 'Create role',
@@ -95,9 +95,9 @@ controller.Register = async (req, res, next) => {
 controller.Login = async (req, res, next) => {
   try {
     /*
-    #swagger.tags = ['Master Role']
-    #swagger.summary = 'role user'
-    #swagger.description = 'every user has role for access'
+    #swagger.tags = ['Authentication']
+    #swagger.summary = 'Log in'
+    #swagger.description = 'Authenticate a user with email and password and return a JWT access token.'
     #swagger.parameters['obj'] = {
       in: 'body',
       description: 'Create role',
@@ -164,9 +164,9 @@ controller.Login = async (req, res, next) => {
 
 controller.recoveryPassword = async (req, res, next) => {
   /*
-    #swagger.tags = ['Master Role']
-    #swagger.summary = 'role user'
-    #swagger.description = 'every user has role for access'
+    #swagger.tags = ['Authentication']
+    #swagger.summary = 'Recover password'
+    #swagger.description = 'Reset a user password using the account recovery flow.'
     #swagger.parameters['obj'] = {
       in: 'body',
       description: 'Create role',
@@ -207,43 +207,6 @@ controller.recoveryPassword = async (req, res, next) => {
         email: result.data.email,
         token,
       },
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-
-controller.uploadFile = async (req, res, next) => {
-  /*
-    #swagger.tags = ['UPLOAD IMAGES']
-    #swagger.summary = 'this API for upload images'
-    #swagger.description = 'untuk referensi group'
-    #swagger.consumes = ['multipart/form-data']
-    #swagger.parameters['proofs'] = {
-      in: 'formData',
-      type: 'array',
-      required: true,
-      description: 'Some description...',
-      collectionFormat: 'multi',
-      items: { type: 'file' }
-    }
-  */
-  try {
-    const files = req?.files?.proofs;
-    if (!files || files.length === 0) {
-      throw new BadRequest("No image uploaded. Use form field 'proofs'.");
-    }
-    // Hanya satu gambar per produk — ambil file pertama saja.
-    const fileResult = await globalService.uploadFiles([files[0]]);
-    const data = fileResult.map((item) => ({
-      _id: item.id,
-      path: item.path,
-    }));
-
-    res.status(200).json({
-      success: true,
-      message: "Image uploaded successfully!",
-      data,
     });
   } catch (err) {
     next(err);

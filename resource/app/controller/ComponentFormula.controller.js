@@ -7,9 +7,9 @@ const controller = {};
 
 controller.index = async (req, res, next) => {
   /*
-    #swagger.tags = ['COMPONENT FORMULA']
-    #swagger.summary = 'Component Formula'
-    #swagger.description = 'Komponen dasar untuk perhitungan CalculatedFormula'
+    #swagger.tags = ['Component Formula']
+    #swagger.summary = 'List Component Formulas'
+    #swagger.description = 'Retrieve component formulas with pagination and search.'
     #swagger.parameters['search'] = { default: '', description: 'search by name' }
     #swagger.parameters['limit'] = { default: 10, description: 'limit' }
     #swagger.parameters['page'] = { default: 1, description: 'page' }
@@ -46,9 +46,9 @@ controller.index = async (req, res, next) => {
 
 controller.create = async (req, res, next) => {
   /*
-    #swagger.tags = ['COMPONENT FORMULA']
-    #swagger.summary = 'Component Formula'
-    #swagger.description = 'Buat komponen formula baru'
+    #swagger.tags = ['Component Formula']
+    #swagger.summary = 'Create Component Formula'
+    #swagger.description = 'Create a new component formula.'
     #swagger.parameters['obj'] = {
       in: 'body',
       description: 'Create component formula',
@@ -74,9 +74,9 @@ controller.create = async (req, res, next) => {
 
 controller.update = async (req, res, next) => {
   /*
-    #swagger.tags = ['COMPONENT FORMULA']
-    #swagger.summary = 'Component Formula'
-    #swagger.description = 'Perbarui komponen formula'
+    #swagger.tags = ['Component Formula']
+    #swagger.summary = 'Update Component Formula'
+    #swagger.description = 'Update an existing component formula.'
     #swagger.parameters['id'] = { description: 'id component formula' }
     #swagger.parameters['obj'] = {
       in: 'body',
@@ -107,9 +107,9 @@ controller.update = async (req, res, next) => {
 
 controller.delete = async (req, res, next) => {
   /*
-    #swagger.tags = ['COMPONENT FORMULA']
-    #swagger.summary = 'Component Formula'
-    #swagger.description = 'Hapus komponen formula (hanya bila tidak dipakai)'
+    #swagger.tags = ['Component Formula']
+    #swagger.summary = 'Delete Component Formula (soft delete)'
+    #swagger.description = 'Delete a component formula (only when it is not used by any calculated formula).'
     #swagger.parameters['id'] = { description: 'id component formula' }
   */
   try {

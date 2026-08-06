@@ -91,9 +91,9 @@ const cascadeDescendants = async (oldPath, newPath, levelDelta, session) => {
 
 controller.index = async (req, res, next) => {
   /*
-    #swagger.tags = ['CHART OF ACCOUNT']
-    #swagger.summary = 'Chart of Account'
-    #swagger.description = 'Master COA berhierarki tak terbatas dalam satu collection'
+    #swagger.tags = ['Chart of Account']
+    #swagger.summary = 'List Chart of Accounts'
+    #swagger.description = 'Returns the full chart of accounts tree (unlimited hierarchy) in a single collection.'
     #swagger.parameters['search'] = { default: '', description: 'search by name / code' }
   */
   try {
@@ -133,12 +133,12 @@ controller.index = async (req, res, next) => {
 
 controller.create = async (req, res, next) => {
   /*
-    #swagger.tags = ['CHART OF ACCOUNT']
-    #swagger.summary = 'Chart of Account'
-    #swagger.description = 'Buat akun COA baru (root atau anak dari header)'
+    #swagger.tags = ['Chart of Account']
+    #swagger.summary = 'Create Chart of Account'
+    #swagger.description = 'Creates a new COA account (root or child of a header account).'
     #swagger.parameters['obj'] = {
       in: 'body',
-      description: 'Create chart of account',
+      description: 'Create Chart of Account',
       schema: { $ref: '#/definitions/BodyChartOfAccountSchema' }
     }
   */
@@ -227,13 +227,13 @@ controller.create = async (req, res, next) => {
 
 controller.update = async (req, res, next) => {
   /*
-    #swagger.tags = ['CHART OF ACCOUNT']
-    #swagger.summary = 'Chart of Account'
-    #swagger.description = 'Perbarui akun COA (termasuk pindah induk / ubah kode)'
+    #swagger.tags = ['Chart of Account']
+    #swagger.summary = 'Update Chart of Account'
+    #swagger.description = 'Updates a COA account, including moving its parent or changing its code.'
     #swagger.parameters['id'] = { description: 'id chart of account' }
     #swagger.parameters['obj'] = {
       in: 'body',
-      description: 'Update chart of account',
+      description: 'Update Chart of Account',
       schema: { $ref: '#/definitions/BodyChartOfAccountSchema' }
     }
   */
@@ -382,9 +382,9 @@ controller.update = async (req, res, next) => {
 
 controller.delete = async (req, res, next) => {
   /*
-    #swagger.tags = ['CHART OF ACCOUNT']
-    #swagger.summary = 'Chart of Account'
-    #swagger.description = 'Hapus akun COA (soft delete). Ditolak bila masih punya anak.'
+    #swagger.tags = ['Chart of Account']
+    #swagger.summary = 'Delete Chart of Account (soft delete)'
+    #swagger.description = 'Soft-deletes a COA account; rejected when the account still has child accounts.'
     #swagger.parameters['id'] = { description: 'id chart of account' }
   */
   try {

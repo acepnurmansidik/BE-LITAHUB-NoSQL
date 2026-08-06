@@ -11,8 +11,8 @@ const controller = {};
 controller.index = async (req, res, next) => {
   /*
     #swagger.tags = ['Branch']
-    #swagger.summary = 'Get branch'
-    #swagger.description = 'Endpoint to list branch.'
+    #swagger.summary = 'List Branches'
+    #swagger.description = 'Retrieve a paginated list of branches with optional search by name or code.'
     #swagger.parameters['page'] = { default: 1 }
     #swagger.parameters['limit'] = { default: 10 }
     #swagger.parameters['search'] = { default: '', description: 'name / code' }
@@ -53,8 +53,9 @@ controller.index = async (req, res, next) => {
 controller.show = async (req, res, next) => {
   /*
     #swagger.tags = ['Branch']
-    #swagger.summary = 'Detail branch'
-    #swagger.parameters['id'] = { description: 'id branch' }
+    #swagger.summary = 'Get Branch detail'
+    #swagger.description = 'Retrieve the details of a single branch by its ID.'
+    #swagger.parameters['id'] = { description: 'branch id' }
   */
   try {
     const { id } = req.params;
@@ -77,8 +78,8 @@ controller.show = async (req, res, next) => {
 controller.create = async (req, res, next) => {
   /*
     #swagger.tags = ['Branch']
-    #swagger.summary = 'Create a new branch'
-    #swagger.description = 'Endpoint to create a branch. Code & slug are auto-generated from name.'
+    #swagger.summary = 'Create Branch'
+    #swagger.description = 'Create a branch with code and slug auto-generated from the name.'
     #swagger.parameters['obj'] = {
       in: 'body',
       description: 'Create branch',
@@ -123,8 +124,9 @@ controller.create = async (req, res, next) => {
 controller.update = async (req, res, next) => {
   /*
     #swagger.tags = ['Branch']
-    #swagger.summary = 'Update a branch'
-    #swagger.parameters['id'] = { description: 'id branch' }
+    #swagger.summary = 'Update Branch'
+    #swagger.description = 'Update an existing branch identified by its ID.'
+    #swagger.parameters['id'] = { description: 'branch id' }
     #swagger.parameters['obj'] = {
       in: 'body',
       description: 'Update branch',
@@ -186,8 +188,9 @@ controller.update = async (req, res, next) => {
 controller.delete = async (req, res, next) => {
   /*
     #swagger.tags = ['Branch']
-    #swagger.summary = 'Delete a branch (soft delete)'
-    #swagger.parameters['id'] = { description: 'id branch' }
+    #swagger.summary = 'Delete Branch (soft delete)'
+    #swagger.description = 'Soft-delete a branch by marking it as deleted without removing the record.'
+    #swagger.parameters['id'] = { description: 'branch id' }
   */
   try {
     const { id } = req.params;
@@ -229,34 +232,6 @@ controller.delete = async (req, res, next) => {
       success: true,
       message: "Data has been deleted!",
       data: result,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-controller.uploadImage = async (req, res, next) => {
-  /*
-    #swagger.tags = ['Branch']
-    #swagger.summary = 'Upload image (stored in Image model)'
-    #swagger.consumes = ['multipart/form-data']
-    #swagger.parameters['proofs'] = {
-      in: 'formData', type: 'array', required: true,
-      collectionFormat: 'multi', items: { type: 'file' }
-    }
-  */
-  try {
-    const files = req?.files?.proofs;
-    if (!files || files.length === 0) {
-      throw new BadRequest("No image uploaded. Use form field 'proofs'.");
-    }
-    const fileResult = await globalService.uploadFiles(files);
-    const data = fileResult.map((item) => ({ _id: item.id, path: item.path }));
-
-    res.status(200).json({
-      success: true,
-      message: "Image uploaded successfully!",
-      data,
     });
   } catch (error) {
     next(error);

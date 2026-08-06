@@ -50,7 +50,8 @@ const buildFloorDocs = (building, from, to) => {
 controller.index = async (req, res, next) => {
   /*
     #swagger.tags = ['Building']
-    #swagger.summary = 'List building'
+    #swagger.summary = 'List Buildings'
+    #swagger.description = 'Retrieve a paginated list of buildings with optional search and filter by branch.'
     #swagger.parameters['page'] = { default: 1 }
     #swagger.parameters['limit'] = { default: 10 }
     #swagger.parameters['search'] = { default: '', description: 'name / code' }
@@ -94,8 +95,9 @@ controller.index = async (req, res, next) => {
 controller.show = async (req, res, next) => {
   /*
     #swagger.tags = ['Building']
-    #swagger.summary = 'Detail building (with its floors)'
-    #swagger.parameters['id'] = { description: 'id building' }
+    #swagger.summary = 'Get Building detail'
+    #swagger.description = 'Retrieve a single building by its ID together with its list of floors.'
+    #swagger.parameters['id'] = { description: 'building id' }
   */
   try {
     const { id } = req.params;
@@ -126,8 +128,8 @@ controller.show = async (req, res, next) => {
 controller.create = async (req, res, next) => {
   /*
     #swagger.tags = ['Building']
-    #swagger.summary = 'Create building (auto-generates its floors)'
-    #swagger.description = 'Code auto from name (ANGGREK -> AGRK). Each floor auto-created with code AGRK-FLR1.. and name Floor 1..'
+    #swagger.summary = 'Create Building'
+    #swagger.description = 'Create a building with an auto-generated code and automatically create its floors based on total_floors.'
     #swagger.parameters['obj'] = {
       in: 'body', description: 'Create building',
       schema: { $ref: '#/definitions/BodyBuildingSchema' }
@@ -206,9 +208,9 @@ controller.create = async (req, res, next) => {
 controller.update = async (req, res, next) => {
   /*
     #swagger.tags = ['Building']
-    #swagger.summary = 'Update building'
-    #swagger.description = 'Bila total_floors dinaikkan, lantai baru otomatis ditambahkan.'
-    #swagger.parameters['id'] = { description: 'id building' }
+    #swagger.summary = 'Update Building'
+    #swagger.description = 'Update a building; when total_floors is increased, the missing floors are automatically added.'
+    #swagger.parameters['id'] = { description: 'building id' }
   */
   try {
     const { id } = req.params;
@@ -283,8 +285,9 @@ controller.update = async (req, res, next) => {
 controller.delete = async (req, res, next) => {
   /*
     #swagger.tags = ['Building']
-    #swagger.summary = 'Delete building (soft delete, cascade to floors & rooms)'
-    #swagger.parameters['id'] = { description: 'id building' }
+    #swagger.summary = 'Delete Building (soft delete)'
+    #swagger.description = 'Soft-delete a building and cascade the soft-delete to its floors and rooms.'
+    #swagger.parameters['id'] = { description: 'building id' }
   */
   try {
     const { id } = req.params;
@@ -338,34 +341,6 @@ controller.delete = async (req, res, next) => {
       success: true,
       message: "Data has been deleted!",
       data: result,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-controller.uploadImage = async (req, res, next) => {
-  /*
-    #swagger.tags = ['Building']
-    #swagger.summary = 'Upload building image (stored in Image model)'
-    #swagger.consumes = ['multipart/form-data']
-    #swagger.parameters['proofs'] = {
-      in: 'formData', type: 'array', required: true,
-      collectionFormat: 'multi', items: { type: 'file' }
-    }
-  */
-  try {
-    const files = req?.files?.proofs;
-    if (!files || files.length === 0) {
-      throw new BadRequest("No image uploaded. Use form field 'proofs'.");
-    }
-    const fileResult = await globalService.uploadFiles(files);
-    const data = fileResult.map((item) => ({ _id: item.id, path: item.path }));
-
-    res.status(200).json({
-      success: true,
-      message: "Image uploaded successfully!",
-      data,
     });
   } catch (error) {
     next(error);

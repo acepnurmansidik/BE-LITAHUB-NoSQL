@@ -1,6 +1,5 @@
 const express = require("express");
 const controller = require("../auth/controller");
-const uploadFilesMiddleware = require("../../middleware/multer");
 const rateLimit = require("express-rate-limit");
 const router = express.Router();
 
@@ -20,10 +19,5 @@ const limiter = rateLimit({
 router.post("/sign-up", limiter, controller.Register);
 router.post("/sign-in", limiter, controller.Login);
 router.put("/forgot", controller.recoveryPassword);
-router.post(
-  "/upload-file",
-  uploadFilesMiddleware("avatar"),
-  controller.uploadFile,
-);
 
 module.exports = router;

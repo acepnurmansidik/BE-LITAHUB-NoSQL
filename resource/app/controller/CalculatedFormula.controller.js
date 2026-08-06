@@ -305,9 +305,9 @@ const syncComponentBackRefs = async (formulaId, oldIds, newIds, session) => {
 
 controller.index = async (req, res, next) => {
   /*
-    #swagger.tags = ['CALCULATED FORMULA']
-    #swagger.summary = 'Calculated Formula'
-    #swagger.description = 'Master formula yang menghitung beberapa ComponentFormula'
+    #swagger.tags = ['Calculated Formula']
+    #swagger.summary = 'List Calculated Formulas'
+    #swagger.description = 'Retrieve calculated formulas that combine multiple component formulas.'
     #swagger.parameters['search'] = { default: '', description: 'search by name' }
     #swagger.parameters['limit'] = { default: 10, description: 'limit' }
     #swagger.parameters['page'] = { default: 1, description: 'page' }
@@ -378,9 +378,9 @@ controller.index = async (req, res, next) => {
 
 controller.create = async (req, res, next) => {
   /*
-    #swagger.tags = ['CALCULATED FORMULA']
-    #swagger.summary = 'Calculated Formula'
-    #swagger.description = 'Buat master formula baru'
+    #swagger.tags = ['Calculated Formula']
+    #swagger.summary = 'Create Calculated Formula'
+    #swagger.description = 'Create a new calculated formula.'
     #swagger.parameters['obj'] = {
       in: 'body',
       description: 'Create calculated formula',
@@ -495,9 +495,9 @@ controller.create = async (req, res, next) => {
 
 controller.update = async (req, res, next) => {
   /*
-    #swagger.tags = ['CALCULATED FORMULA']
-    #swagger.summary = 'Calculated Formula'
-    #swagger.description = 'Perbarui master formula'
+    #swagger.tags = ['Calculated Formula']
+    #swagger.summary = 'Update Calculated Formula'
+    #swagger.description = 'Update an existing calculated formula.'
     #swagger.parameters['id'] = { description: 'id calculated formula' }
     #swagger.parameters['obj'] = {
       in: 'body',
@@ -641,9 +641,9 @@ controller.update = async (req, res, next) => {
 
 controller.delete = async (req, res, next) => {
   /*
-    #swagger.tags = ['CALCULATED FORMULA']
-    #swagger.summary = 'Calculated Formula'
-    #swagger.description = 'Hapus master formula'
+    #swagger.tags = ['Calculated Formula']
+    #swagger.summary = 'Delete Calculated Formula (soft delete)'
+    #swagger.description = 'Delete a calculated formula.'
     #swagger.parameters['id'] = { description: 'id calculated formula' }
   */
   try {

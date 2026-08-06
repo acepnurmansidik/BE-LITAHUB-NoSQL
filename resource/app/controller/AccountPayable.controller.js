@@ -80,9 +80,9 @@ const normalizeStatus = (rawStatus, total, rawPaid) => {
 
 controller.index = async (req, res, next) => {
   /*
-    #swagger.tags = ['ACCOUNT PAYABLE']
-    #swagger.summary = 'Account Payable'
-    #swagger.description = 'Utang usaha (bill dari vendor)'
+    #swagger.tags = ['Account Payable']
+    #swagger.summary = 'List Account Payables'
+    #swagger.description = 'Returns a paginated list of accounts payable (vendor bills).'
     #swagger.parameters['page'] = { default: 1 }
     #swagger.parameters['limit'] = { default: 10 }
     #swagger.parameters['search'] = { default: '', description: 'entry_no / party_name / description / reference' }
@@ -145,9 +145,9 @@ controller.index = async (req, res, next) => {
 
 controller.show = async (req, res, next) => {
   /*
-    #swagger.tags = ['ACCOUNT PAYABLE']
-    #swagger.summary = 'Account Payable'
-    #swagger.description = 'Detail satu utang'
+    #swagger.tags = ['Account Payable']
+    #swagger.summary = 'Get Account Payable detail'
+    #swagger.description = 'Returns the detail of a single account payable by id.'
     #swagger.parameters['id'] = { description: 'id account payable' }
   */
   try {
@@ -169,9 +169,14 @@ controller.show = async (req, res, next) => {
 
 controller.create = async (req, res, next) => {
   /*
-    #swagger.tags = ['ACCOUNT PAYABLE']
-    #swagger.summary = 'Account Payable'
-    #swagger.description = 'Buat utang (bill) baru'
+    #swagger.tags = ['Account Payable']
+    #swagger.summary = 'Create Account Payable'
+    #swagger.description = 'Creates a new account payable (vendor bill).'
+    #swagger.parameters['obj'] = {
+      in: 'body',
+      description: 'Create Account Payable',
+      schema: { $ref: '#/definitions/BodyAccountPayableSchema' }
+    }
   */
   try {
     const payload = req.body;
@@ -246,10 +251,15 @@ controller.create = async (req, res, next) => {
 
 controller.update = async (req, res, next) => {
   /*
-    #swagger.tags = ['ACCOUNT PAYABLE']
-    #swagger.summary = 'Account Payable'
-    #swagger.description = 'Perbarui utang'
+    #swagger.tags = ['Account Payable']
+    #swagger.summary = 'Update Account Payable'
+    #swagger.description = 'Updates an account payable and recomputes its payment status.'
     #swagger.parameters['id'] = { description: 'id account payable' }
+    #swagger.parameters['obj'] = {
+      in: 'body',
+      description: 'Update Account Payable',
+      schema: { $ref: '#/definitions/BodyAccountPayableSchema' }
+    }
   */
   try {
     const { id } = req.params;
@@ -342,9 +352,9 @@ controller.update = async (req, res, next) => {
 
 controller.delete = async (req, res, next) => {
   /*
-    #swagger.tags = ['ACCOUNT PAYABLE']
-    #swagger.summary = 'Account Payable'
-    #swagger.description = 'Hapus utang (soft delete). Ditolak bila sudah ada pembayaran.'
+    #swagger.tags = ['Account Payable']
+    #swagger.summary = 'Delete Account Payable (soft delete)'
+    #swagger.description = 'Soft-deletes an account payable; rejected when a payment has already been recorded.'
     #swagger.parameters['id'] = { description: 'id account payable' }
   */
   try {

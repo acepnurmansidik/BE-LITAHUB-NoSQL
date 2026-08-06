@@ -54,9 +54,9 @@ const createChildren = async (roleId, modules, session) => {
 
 controller.getAllRole = async (req, res, next) => {
   /*
-    #swagger.tags = ['ROLE']
-    #swagger.summary = 'Role'
-    #swagger.description = 'untuk referensi group'
+    #swagger.tags = ['Role']
+    #swagger.summary = 'List Roles'
+    #swagger.description = 'Retrieve a paginated list of roles with their access modules and path access.'
     #swagger.parameters['search'] = { default: '', description: 'search by value' }
     #swagger.parameters['limit'] = { default: 10, description: 'limit' }
     #swagger.parameters['page'] = { default: 1, description: 'page' }
@@ -113,12 +113,12 @@ controller.getAllRole = async (req, res, next) => {
 controller.createRole = async (req, res, next) => {
   try {
     /*
-    #swagger.tags = ['ROLE']
-    #swagger.summary = 'Role'
-    #swagger.description = 'untuk referensi group'
+    #swagger.tags = ['Role']
+    #swagger.summary = 'Create Role'
+    #swagger.description = 'Create a new role along with its access modules and path access.'
     #swagger.parameters['obj'] = {
       in: 'body',
-      description: 'Create role',
+      description: 'Create Role',
       schema: { $ref: '#/definitions/BodyRoleSchema' }
     }
   */
@@ -184,13 +184,13 @@ controller.createRole = async (req, res, next) => {
 controller.updateRole = async (req, res, next) => {
   try {
     /*
-    #swagger.tags = ['ROLE']
-    #swagger.summary = 'Role'
-    #swagger.description = 'untuk referensi group'
-    #swagger.parameters['id'] = { description: 'id role' }
+    #swagger.tags = ['Role']
+    #swagger.summary = 'Update Role'
+    #swagger.description = 'Update a role and rebuild its access modules and path access.'
+    #swagger.parameters['id'] = { description: 'Role ID' }
     #swagger.parameters['obj'] = {
       in: 'body',
-      description: 'Update role',
+      description: 'Update Role',
       schema: { $ref: '#/definitions/BodyRoleSchema' }
     }
   */
@@ -259,10 +259,10 @@ controller.updateRole = async (req, res, next) => {
 controller.deleteRole = async (req, res, next) => {
   try {
     /*
-    #swagger.tags = ['ROLE']
-    #swagger.summary = 'Role'
-    #swagger.description = 'untuk referensi group'
-    #swagger.parameters['id'] = { description: 'id role' }
+    #swagger.tags = ['Role']
+    #swagger.summary = 'Delete Role (soft delete)'
+    #swagger.description = 'Soft delete a role and its related access modules and path access.'
+    #swagger.parameters['id'] = { description: 'Role ID' }
   */
     const { id } = req.params;
 

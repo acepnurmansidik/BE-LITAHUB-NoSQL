@@ -133,7 +133,11 @@ globalService.uploadFiles = async (files, source_name) => {
   const session = await mongoose.startSession();
   session.startTransaction();
   try {
-    const fileResult = await ImageSchema.create(files, { session });
+    // `ordered: true` wajib saat create banyak dokumen dalam satu session.
+    const fileResult = await ImageSchema.create(files, {
+      session,
+      ordered: true,
+    });
 
     await session.commitTransaction();
     return fileResult;

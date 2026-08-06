@@ -7,9 +7,9 @@ const controller = {};
 
 controller.index = async (req, res, next) => {
   /*
-  #swagger.tags = ['REF PARAMETER']
-  #swagger.summary = 'ref parameter'
-  #swagger.description = 'untuk referensi group'
+  #swagger.tags = ['Reference Parameter']
+  #swagger.summary = 'List Reference Parameters'
+  #swagger.description = 'Retrieve reference parameters with pagination and search.'
   #swagger.parameters['search'] = { default: '', description: 'search by value / description' }
   #swagger.parameters['type'] = { default: '', description: 'filter by type' }
   #swagger.parameters['limit'] = { default: 10, description: 'limit' }
@@ -54,9 +54,9 @@ controller.index = async (req, res, next) => {
 
 controller.types = async (req, res, next) => {
   /*
-    #swagger.tags = ['REF PARAMETER']
-    #swagger.summary = 'Distinct ref parameter types'
-    #swagger.description = 'Daftar type unik untuk filter grouping.'
+    #swagger.tags = ['Reference Parameter']
+    #swagger.summary = 'List reference parameter types'
+    #swagger.description = 'Distinct parameter types used for grouping filters.'
   */
   try {
     const types = await ReffparamModel.distinct("type", {
@@ -75,9 +75,9 @@ controller.types = async (req, res, next) => {
 controller.create = async (req, res, next) => {
   try {
     /*
-    #swagger.tags = ['REF PARAMETER']
-    #swagger.summary = 'ref parameter'
-    #swagger.description = 'untuk referensi group'
+    #swagger.tags = ['Reference Parameter']
+    #swagger.summary = 'Create Reference Parameter'
+    #swagger.description = 'Create a new reference parameter.'
     #swagger.parameters['obj'] = {
       in: 'body',
       description: 'Create role',
@@ -117,9 +117,9 @@ controller.update = async (req, res, next) => {
     }]
   */
     /*
-    #swagger.tags = ['REF PARAMETER']
-    #swagger.summary = 'ref parameter'
-    #swagger.description = 'untuk referensi group'
+    #swagger.tags = ['Reference Parameter']
+    #swagger.summary = 'Update Reference Parameter'
+    #swagger.description = 'Update an existing reference parameter.'
     #swagger.parameters['obj'] = {
       in: 'body',
       description: 'Create role',
@@ -147,9 +147,9 @@ controller.delete = async (req, res, next) => {
     }]
   */
     /*
-    #swagger.tags = ['REF PARAMETER']
-    #swagger.summary = 'ref parameter'
-    #swagger.description = 'untuk referensi group'
+    #swagger.tags = ['Reference Parameter']
+    #swagger.summary = 'Delete Reference Parameter (soft delete)'
+    #swagger.description = 'Soft-delete a reference parameter.'
   */
     const id = req.params.id;
 

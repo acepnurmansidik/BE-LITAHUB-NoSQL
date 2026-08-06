@@ -13,7 +13,7 @@ const MODULE_NAME = DepartmentModel.collection.collectionName;
 controller.index = async (req, res, next) => {
   /*
     #swagger.tags = ['Department']
-    #swagger.summary = 'List Department'
+    #swagger.summary = 'List Departments'
     #swagger.parameters['page'] = { default: 1 }
     #swagger.parameters['limit'] = { default: 10 }
     #swagger.parameters['search'] = { default: '', description: 'name / code' }
@@ -51,7 +51,7 @@ controller.index = async (req, res, next) => {
 controller.show = async (req, res, next) => {
   /*
     #swagger.tags = ['Department']
-    #swagger.summary = 'Detail Department '
+    #swagger.summary = 'Get Department detail'
     #swagger.parameters['id'] = { description: 'id Department' }
   */
   try {
@@ -75,8 +75,8 @@ controller.show = async (req, res, next) => {
 controller.create = async (req, res, next) => {
   /*
     #swagger.tags = ['Department']
-    #swagger.summary = 'Create a new Department'
-    #swagger.description = 'Endpoint to create a Department. Slug are auto-generated from name.'
+    #swagger.summary = 'Create Department'
+    #swagger.description = 'Create a new department; code is auto-generated from the name.'
     #swagger.parameters['obj'] = {
       in: 'body',
       description: 'Create Department',
@@ -132,9 +132,9 @@ controller.create = async (req, res, next) => {
 controller.update = async (req, res, next) => {
   /*
     #swagger.tags = ['Department']
-    #swagger.summary = 'Detail Department (with its floors)'
+    #swagger.summary = 'Update Department'
     #swagger.parameters['id'] = { description: 'id Department' }
-    #swagger.description = 'Endpoint to update a Department. Slug are auto-generated from name.'
+    #swagger.description = 'Update an existing department.'
     #swagger.parameters['obj'] = {
       in: 'body',
       description: 'Update Department',
@@ -200,7 +200,7 @@ controller.update = async (req, res, next) => {
 controller.delete = async (req, res, next) => {
   /*
     #swagger.tags = ['Department']
-    #swagger.summary = 'Delete Department (soft delete, cascade to floors & rooms)'
+    #swagger.summary = 'Delete Department (soft delete)'
     #swagger.parameters['id'] = { description: 'id Department' }
   */
   try {

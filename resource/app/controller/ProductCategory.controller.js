@@ -23,7 +23,8 @@ const buildLineAccounts = (rawList) => {
 controller.index = async (req, res, next) => {
   /*
     #swagger.tags = ['Product Category']
-    #swagger.summary = 'List product categories (with their line accounts)'
+    #swagger.summary = 'List Product Categories'
+    #swagger.description = 'Retrieve a paginated list of product categories with their line accounts.'
     #swagger.parameters['page'] = { default: 1 }
     #swagger.parameters['limit'] = { default: 10 }
     #swagger.parameters['search'] = { default: '', description: 'name / prefix' }
@@ -65,7 +66,7 @@ controller.index = async (req, res, next) => {
 controller.show = async (req, res, next) => {
   /*
     #swagger.tags = ['Product Category']
-    #swagger.summary = 'Detail product category (with line accounts)'
+    #swagger.summary = 'Get Product Category detail'
     #swagger.parameters['id'] = { description: 'id product category' }
   */
   try {
@@ -89,7 +90,8 @@ controller.show = async (req, res, next) => {
 controller.create = async (req, res, next) => {
   /*
     #swagger.tags = ['Product Category']
-    #swagger.summary = 'Create product category (with embedded line_accounts)'
+    #swagger.summary = 'Create Product Category'
+    #swagger.description = 'Create a new product category with embedded line accounts.'
     #swagger.parameters['obj'] = {
       in: 'body', description: 'Create product category',
       schema: { $ref: '#/definitions/BodyProductCategorySchema' }
@@ -146,7 +148,8 @@ controller.create = async (req, res, next) => {
 controller.update = async (req, res, next) => {
   /*
     #swagger.tags = ['Product Category']
-    #swagger.summary = 'Update product category (replaces line_accounts when provided)'
+    #swagger.summary = 'Update Product Category'
+    #swagger.description = 'Update an existing product category and replace its line accounts when provided.'
     #swagger.parameters['id'] = { description: 'id product category' }
   */
   try {
@@ -207,7 +210,7 @@ controller.update = async (req, res, next) => {
 controller.delete = async (req, res, next) => {
   /*
     #swagger.tags = ['Product Category']
-    #swagger.summary = 'Delete product category (soft delete)'
+    #swagger.summary = 'Delete Product Category (soft delete)'
     #swagger.parameters['id'] = { description: 'id product category' }
   */
   try {

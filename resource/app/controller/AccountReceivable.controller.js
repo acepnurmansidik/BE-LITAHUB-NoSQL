@@ -87,9 +87,9 @@ const normalizeStatus = (rawStatus, total, rawPaid) => {
 
 controller.index = async (req, res, next) => {
   /*
-    #swagger.tags = ['ACCOUNT RECEIVABLE']
-    #swagger.summary = 'Account Receivable'
-    #swagger.description = 'Piutang usaha (invoice ke customer)'
+    #swagger.tags = ['Account Receivable']
+    #swagger.summary = 'List Account Receivables'
+    #swagger.description = 'Returns a paginated list of accounts receivable (customer invoices).'
     #swagger.parameters['page'] = { default: 1 }
     #swagger.parameters['limit'] = { default: 10 }
     #swagger.parameters['search'] = { default: '', description: 'entry_no / party_name / description / reference' }
@@ -152,9 +152,9 @@ controller.index = async (req, res, next) => {
 
 controller.show = async (req, res, next) => {
   /*
-    #swagger.tags = ['ACCOUNT RECEIVABLE']
-    #swagger.summary = 'Account Receivable'
-    #swagger.description = 'Detail satu piutang'
+    #swagger.tags = ['Account Receivable']
+    #swagger.summary = 'Get Account Receivable detail'
+    #swagger.description = 'Returns the detail of a single account receivable by id.'
     #swagger.parameters['id'] = { description: 'id account receivable' }
   */
   try {
@@ -176,9 +176,14 @@ controller.show = async (req, res, next) => {
 
 controller.create = async (req, res, next) => {
   /*
-    #swagger.tags = ['ACCOUNT RECEIVABLE']
-    #swagger.summary = 'Account Receivable'
-    #swagger.description = 'Buat piutang (invoice) baru'
+    #swagger.tags = ['Account Receivable']
+    #swagger.summary = 'Create Account Receivable'
+    #swagger.description = 'Creates a new account receivable (customer invoice).'
+    #swagger.parameters['obj'] = {
+      in: 'body',
+      description: 'Create Account Receivable',
+      schema: { $ref: '#/definitions/BodyAccountReceivableSchema' }
+    }
   */
   try {
     const payload = req.body;
@@ -255,10 +260,15 @@ controller.create = async (req, res, next) => {
 
 controller.update = async (req, res, next) => {
   /*
-    #swagger.tags = ['ACCOUNT RECEIVABLE']
-    #swagger.summary = 'Account Receivable'
-    #swagger.description = 'Perbarui piutang'
+    #swagger.tags = ['Account Receivable']
+    #swagger.summary = 'Update Account Receivable'
+    #swagger.description = 'Updates an account receivable and recomputes its payment status.'
     #swagger.parameters['id'] = { description: 'id account receivable' }
+    #swagger.parameters['obj'] = {
+      in: 'body',
+      description: 'Update Account Receivable',
+      schema: { $ref: '#/definitions/BodyAccountReceivableSchema' }
+    }
   */
   try {
     const { id } = req.params;
@@ -352,9 +362,9 @@ controller.update = async (req, res, next) => {
 
 controller.delete = async (req, res, next) => {
   /*
-    #swagger.tags = ['ACCOUNT RECEIVABLE']
-    #swagger.summary = 'Account Receivable'
-    #swagger.description = 'Hapus piutang (soft delete). Ditolak bila sudah ada pembayaran.'
+    #swagger.tags = ['Account Receivable']
+    #swagger.summary = 'Delete Account Receivable (soft delete)'
+    #swagger.description = 'Soft-deletes an account receivable; rejected when a payment has already been recorded.'
     #swagger.parameters['id'] = { description: 'id account receivable' }
   */
   try {

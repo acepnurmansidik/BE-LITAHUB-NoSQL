@@ -17,7 +17,8 @@ const controller = {};
 controller.index = async (req, res, next) => {
   /*
     #swagger.tags = ['Building Floor']
-    #swagger.summary = 'List floors'
+    #swagger.summary = 'List Floors'
+    #swagger.description = 'Retrieve a paginated list of building floors with optional search and filter by building.'
     #swagger.parameters['page'] = { default: 1 }
     #swagger.parameters['limit'] = { default: 10 }
     #swagger.parameters['search'] = { default: '', description: 'name / code' }
@@ -62,8 +63,9 @@ controller.index = async (req, res, next) => {
 controller.show = async (req, res, next) => {
   /*
     #swagger.tags = ['Building Floor']
-    #swagger.summary = 'Detail floor'
-    #swagger.parameters['id'] = { description: 'id floor' }
+    #swagger.summary = 'Get Floor detail'
+    #swagger.description = 'Retrieve the details of a single building floor by its ID.'
+    #swagger.parameters['id'] = { description: 'floor id' }
   */
   try {
     const { id } = req.params;
@@ -88,8 +90,8 @@ controller.show = async (req, res, next) => {
 controller.create = async (req, res, next) => {
   /*
     #swagger.tags = ['Building Floor']
-    #swagger.summary = 'Add a floor to a building'
-    #swagger.description = 'Code & name auto-follow the running count (AGRK-FLR<n> / Floor <n>).'
+    #swagger.summary = 'Create Floor'
+    #swagger.description = 'Add a floor to a building where the code and name follow the running floor count.'
     #swagger.parameters['obj'] = {
       in: 'body', description: 'Create floor',
       schema: { $ref: '#/definitions/BodyBuildingFloorSchema' }
@@ -179,8 +181,9 @@ controller.create = async (req, res, next) => {
 controller.update = async (req, res, next) => {
   /*
     #swagger.tags = ['Building Floor']
-    #swagger.summary = 'Update floor'
-    #swagger.parameters['id'] = { description: 'id floor' }
+    #swagger.summary = 'Update Floor'
+    #swagger.description = 'Update an existing building floor identified by its ID.'
+    #swagger.parameters['id'] = { description: 'floor id' }
   */
   try {
     const { id } = req.params;
@@ -261,8 +264,9 @@ controller.update = async (req, res, next) => {
 controller.delete = async (req, res, next) => {
   /*
     #swagger.tags = ['Building Floor']
-    #swagger.summary = 'Delete floor (soft delete, cascade to rooms)'
-    #swagger.parameters['id'] = { description: 'id floor' }
+    #swagger.summary = 'Delete Floor (soft delete)'
+    #swagger.description = 'Soft-delete a building floor and cascade the soft-delete to its rooms.'
+    #swagger.parameters['id'] = { description: 'floor id' }
   */
   try {
     const { id } = req.params;

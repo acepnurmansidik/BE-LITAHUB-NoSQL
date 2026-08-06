@@ -11,10 +11,6 @@ const ImageSchema = Schema(
       type: Boolean,
       default: false,
     },
-    source_name: {
-      type: String,
-      required: [false, "Value harus diisi"],
-    },
     source_id: {
       type: mongoose.Types.ObjectId,
       default: null,

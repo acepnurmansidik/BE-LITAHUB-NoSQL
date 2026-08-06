@@ -9,7 +9,8 @@ const controller = {};
 controller.index = async (req, res, next) => {
   /*
     #swagger.tags = ['Stock Position']
-    #swagger.summary = 'List stock positions'
+    #swagger.summary = 'List Stock Positions'
+    #swagger.description = 'Retrieve a paginated list of stock positions with optional product and warehouse filters.'
     #swagger.parameters['page'] = { default: 1 }
     #swagger.parameters['limit'] = { default: 10 }
     #swagger.parameters['product_id'] = { default: '' }
@@ -50,7 +51,7 @@ controller.index = async (req, res, next) => {
 controller.show = async (req, res, next) => {
   /*
     #swagger.tags = ['Stock Position']
-    #swagger.summary = 'Detail stock position'
+    #swagger.summary = 'Get Stock Position detail'
     #swagger.parameters['id'] = { description: 'id stock position' }
   */
   try {
@@ -77,7 +78,8 @@ controller.show = async (req, res, next) => {
 controller.create = async (req, res, next) => {
   /*
     #swagger.tags = ['Stock Position']
-    #swagger.summary = 'Create stock position'
+    #swagger.summary = 'Create Stock Position'
+    #swagger.description = 'Create a new stock position for a product in a warehouse.'
     #swagger.parameters['obj'] = {
       in: 'body', description: 'Create stock position',
       schema: { $ref: '#/definitions/BodyStockPositionSchema' }
@@ -136,7 +138,8 @@ controller.create = async (req, res, next) => {
 controller.update = async (req, res, next) => {
   /*
     #swagger.tags = ['Stock Position']
-    #swagger.summary = 'Update stock position'
+    #swagger.summary = 'Update Stock Position'
+    #swagger.description = 'Update an existing stock position.'
     #swagger.parameters['id'] = { description: 'id stock position' }
   */
   try {
@@ -190,7 +193,7 @@ controller.update = async (req, res, next) => {
 controller.delete = async (req, res, next) => {
   /*
     #swagger.tags = ['Stock Position']
-    #swagger.summary = 'Delete stock position (soft delete)'
+    #swagger.summary = 'Delete Stock Position (soft delete)'
     #swagger.parameters['id'] = { description: 'id stock position' }
   */
   try {

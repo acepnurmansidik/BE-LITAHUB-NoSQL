@@ -9,8 +9,8 @@ const controller = {};
 controller.index = async (req, res, next) => {
   /*
     #swagger.tags = ['Warehouse']
-    #swagger.summary = 'Get warehouse'
-    #swagger.description = 'Endpoint to list warehouse.'
+    #swagger.summary = 'List Warehouses'
+    #swagger.description = 'Retrieve a paginated list of warehouses.'
     #swagger.parameters['page'] = { default: 1 }
     #swagger.parameters['limit'] = { default: 10 }
     #swagger.parameters['search'] = { default: '', description: 'name / code' }
@@ -51,7 +51,7 @@ controller.index = async (req, res, next) => {
 controller.show = async (req, res, next) => {
   /*
     #swagger.tags = ['Warehouse']
-    #swagger.summary = 'Detail warehouse'
+    #swagger.summary = 'Get Warehouse detail'
     #swagger.parameters['id'] = { description: 'id warehouse' }
   */
   try {
@@ -75,8 +75,8 @@ controller.show = async (req, res, next) => {
 controller.create = async (req, res, next) => {
   /*
     #swagger.tags = ['Warehouse']
-    #swagger.summary = 'Create a new warehouse'
-    #swagger.description = 'Endpoint to create a warehouse. Slug is auto-generated from name.'
+    #swagger.summary = 'Create Warehouse'
+    #swagger.description = 'Create a new warehouse with a slug auto-generated from its name.'
     #swagger.parameters['obj'] = {
       in: 'body',
       description: 'Create warehouse',
@@ -121,7 +121,8 @@ controller.create = async (req, res, next) => {
 controller.update = async (req, res, next) => {
   /*
     #swagger.tags = ['Warehouse']
-    #swagger.summary = 'Update a warehouse'
+    #swagger.summary = 'Update Warehouse'
+    #swagger.description = 'Update an existing warehouse.'
     #swagger.parameters['id'] = { description: 'id warehouse' }
     #swagger.parameters['obj'] = {
       in: 'body',
@@ -183,7 +184,7 @@ controller.update = async (req, res, next) => {
 controller.delete = async (req, res, next) => {
   /*
     #swagger.tags = ['Warehouse']
-    #swagger.summary = 'Delete a warehouse (soft delete)'
+    #swagger.summary = 'Delete Warehouse (soft delete)'
     #swagger.parameters['id'] = { description: 'id warehouse' }
   */
   try {

@@ -8,8 +8,9 @@ const controller = {};
 
 controller.index = async (req, res, next) => {
   /*
-    #swagger.tags = ['UOM']
-    #swagger.summary = 'List units of measure'
+    #swagger.tags = ['Unit of Measure']
+    #swagger.summary = 'List Units of Measure'
+    #swagger.description = 'Retrieve a paginated list of units of measure.'
     #swagger.parameters['page'] = { default: 1 }
     #swagger.parameters['limit'] = { default: 10 }
     #swagger.parameters['search'] = { default: '', description: 'name / code' }
@@ -49,8 +50,8 @@ controller.index = async (req, res, next) => {
 
 controller.show = async (req, res, next) => {
   /*
-    #swagger.tags = ['UOM']
-    #swagger.summary = 'Detail unit of measure'
+    #swagger.tags = ['Unit of Measure']
+    #swagger.summary = 'Get Unit of Measure detail'
     #swagger.parameters['id'] = { description: 'id uom' }
   */
   try {
@@ -73,8 +74,9 @@ controller.show = async (req, res, next) => {
 
 controller.create = async (req, res, next) => {
   /*
-    #swagger.tags = ['UOM']
-    #swagger.summary = 'Create unit of measure'
+    #swagger.tags = ['Unit of Measure']
+    #swagger.summary = 'Create Unit of Measure'
+    #swagger.description = 'Create a new unit of measure.'
     #swagger.parameters['obj'] = {
       in: 'body', description: 'Create unit of measure',
       schema: { $ref: '#/definitions/BodyUomSchema' }
@@ -130,8 +132,9 @@ controller.create = async (req, res, next) => {
 
 controller.update = async (req, res, next) => {
   /*
-    #swagger.tags = ['UOM']
-    #swagger.summary = 'Update unit of measure'
+    #swagger.tags = ['Unit of Measure']
+    #swagger.summary = 'Update Unit of Measure'
+    #swagger.description = 'Update an existing unit of measure.'
     #swagger.parameters['id'] = { description: 'id uom' }
   */
   try {
@@ -184,8 +187,8 @@ controller.update = async (req, res, next) => {
 
 controller.delete = async (req, res, next) => {
   /*
-    #swagger.tags = ['UOM']
-    #swagger.summary = 'Delete unit of measure (soft delete)'
+    #swagger.tags = ['Unit of Measure']
+    #swagger.summary = 'Delete Unit of Measure (soft delete)'
     #swagger.parameters['id'] = { description: 'id uom' }
   */
   try {

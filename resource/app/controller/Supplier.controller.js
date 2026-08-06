@@ -36,8 +36,8 @@ const resolveSupplierCode = async (payload, session) => {
 controller.index = async (req, res, next) => {
   /*
     #swagger.tags = ['Supplier']
-    #swagger.summary = 'Get supplier'
-    #swagger.description = 'Endpoint to list supplier.'
+    #swagger.summary = 'List Suppliers'
+    #swagger.description = 'Retrieve a paginated list of suppliers.'
     #swagger.parameters['page'] = { default: 1 }
     #swagger.parameters['limit'] = { default: 10 }
     #swagger.parameters['search'] = { default: '', description: 'name / code' }
@@ -78,7 +78,7 @@ controller.index = async (req, res, next) => {
 controller.show = async (req, res, next) => {
   /*
     #swagger.tags = ['Supplier']
-    #swagger.summary = 'Detail supplier'
+    #swagger.summary = 'Get Supplier detail'
     #swagger.parameters['id'] = { description: 'id supplier' }
   */
   try {
@@ -102,8 +102,8 @@ controller.show = async (req, res, next) => {
 controller.create = async (req, res, next) => {
   /*
     #swagger.tags = ['Supplier']
-    #swagger.summary = 'Create a new supplier'
-    #swagger.description = 'Endpoint to create a supplier. Slug is auto-generated from name.'
+    #swagger.summary = 'Create Supplier'
+    #swagger.description = 'Create a new supplier with a slug auto-generated from its name.'
     #swagger.parameters['obj'] = {
       in: 'body',
       description: 'Create supplier',
@@ -152,7 +152,8 @@ controller.create = async (req, res, next) => {
 controller.update = async (req, res, next) => {
   /*
     #swagger.tags = ['Supplier']
-    #swagger.summary = 'Update a supplier'
+    #swagger.summary = 'Update Supplier'
+    #swagger.description = 'Update an existing supplier.'
     #swagger.parameters['id'] = { description: 'id supplier' }
     #swagger.parameters['obj'] = {
       in: 'body',
@@ -215,7 +216,7 @@ controller.update = async (req, res, next) => {
 controller.delete = async (req, res, next) => {
   /*
     #swagger.tags = ['Supplier']
-    #swagger.summary = 'Delete a supplier (soft delete)'
+    #swagger.summary = 'Delete Supplier (soft delete)'
     #swagger.parameters['id'] = { description: 'id supplier' }
   */
   try {

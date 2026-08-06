@@ -1,6 +1,4 @@
 const controller = require("../controller/ReffParam.controller");
-const uploadFilesMiddleware = require("../../middleware/multer");
-
 const router = require("express").Router();
 
 /**

@@ -50,7 +50,9 @@ const validatePurchaseOrders = async (poIds, session) => {
 
 controller.index = async (req, res, next) => {
   /*
-    #swagger.tags = ['GOOD RECEIPT']
+    #swagger.tags = ['Good Receipt']
+    #swagger.summary = 'List Good Receipts'
+    #swagger.description = 'Return a paginated list of good receipts with optional search and status filters.'
     #swagger.parameters['page'] = { default: 1 }
     #swagger.parameters['limit'] = { default: 10 }
     #swagger.parameters['search'] = { default: '', description: 'receipt_no / reference / description' }
@@ -116,8 +118,10 @@ controller.index = async (req, res, next) => {
 
 controller.show = async (req, res, next) => {
   /*
-    #swagger.tags = ['GOOD RECEIPT']
-    #swagger.parameters['id'] = { description: 'id good receipt' }
+    #swagger.tags = ['Good Receipt']
+    #swagger.summary = 'Get Good Receipt detail'
+    #swagger.description = 'Return a single good receipt with its detail items by id.'
+    #swagger.parameters['id'] = { description: 'good receipt id' }
   */
   try {
     const data = await GoodReceiptModel.findOne({
@@ -141,8 +145,14 @@ controller.show = async (req, res, next) => {
 
 controller.create = async (req, res, next) => {
   /*
-    #swagger.tags = ['GOOD RECEIPT']
-    #swagger.summary = 'Buat good receipt. Item MEMAKAI ULANG detail dari PO (tidak bikin baru).'
+    #swagger.tags = ['Good Receipt']
+    #swagger.summary = 'Create Good Receipt'
+    #swagger.description = 'Create a good receipt against one or more purchase orders, reusing PO detail items and updating stock.'
+    #swagger.parameters['obj'] = {
+      in: 'body',
+      description: 'Create Good Receipt',
+      schema: { $ref: '#/definitions/BodyGoodReceiptSchema' }
+    }
   */
   try {
     const payload = req.body;
@@ -269,9 +279,15 @@ controller.create = async (req, res, next) => {
 
 controller.update = async (req, res, next) => {
   /*
-    #swagger.tags = ['GOOD RECEIPT']
-    #swagger.summary = 'Perbarui GR (status otomatis dari received_qty).'
-    #swagger.parameters['id'] = { description: 'id good receipt' }
+    #swagger.tags = ['Good Receipt']
+    #swagger.summary = 'Update Good Receipt'
+    #swagger.description = 'Update a good receipt; status is recomputed automatically from received quantities and stock is reconciled.'
+    #swagger.parameters['id'] = { description: 'good receipt id' }
+    #swagger.parameters['obj'] = {
+      in: 'body',
+      description: 'Update Good Receipt',
+      schema: { $ref: '#/definitions/BodyGoodReceiptSchema' }
+    }
   */
   try {
     const { id } = req.params;
@@ -395,9 +411,10 @@ controller.update = async (req, res, next) => {
 
 controller.delete = async (req, res, next) => {
   /*
-    #swagger.tags = ['GOOD RECEIPT']
-    #swagger.summary = 'Hapus GR (soft delete). Item PO di-detach (tidak dihapus), stok dikembalikan.'
-    #swagger.parameters['id'] = { description: 'id good receipt' }
+    #swagger.tags = ['Good Receipt']
+    #swagger.summary = 'Delete Good Receipt (soft delete)'
+    #swagger.description = 'Soft delete a good receipt; PO items are detached (not removed) and stock is reverted.'
+    #swagger.parameters['id'] = { description: 'good receipt id' }
   */
   try {
     const { id } = req.params;

@@ -18,8 +18,8 @@ const setImageStatus = async (imageId, status, session) => {
 controller.index = async (req, res, next) => {
   /*
     #swagger.tags = ['Layout Component']
-    #swagger.summary = 'Get layout components'
-    #swagger.description = 'Retrieve a list of layout components with pagination and search functionality.'
+    #swagger.summary = 'List Layout Components'
+    #swagger.description = 'Retrieve a paginated list of layout components with optional search by name or category.'
     #swagger.parameters['page'] = { default: 1, description: 'Page number' }
     #swagger.parameters['limit'] = { default: 10, description: 'Number of items per page' }
     #swagger.parameters['search'] = { default: '', description: 'Filter by layout name or category' }
@@ -62,8 +62,8 @@ controller.index = async (req, res, next) => {
 controller.grouped = async (req, res, next) => {
   /*
     #swagger.tags = ['Layout Component']
-    #swagger.summary = 'Get all layout components grouped by category'
-    #swagger.description = 'Return every layout component grouped by its category. Used by the floor-plan canvas palette.'
+    #swagger.summary = 'List layout components grouped by category'
+    #swagger.description = 'Return every layout component grouped by its category for the floor-plan canvas palette.'
   */
   try {
     const data = await LayoutComponentModel.aggregate([
@@ -114,9 +114,9 @@ controller.grouped = async (req, res, next) => {
 controller.show = async (req, res, next) => {
   /*
     #swagger.tags = ['Layout Component']
-    #swagger.summary = 'Get layout component by ID'
-    #swagger.description = 'Retrieve detailed information of a specific layout component by its unique ID.'
-    #swagger.parameters['id'] = { description: 'id layout component' }
+    #swagger.summary = 'Get Layout Component detail'
+    #swagger.description = 'Retrieve the details of a single layout component by its ID.'
+    #swagger.parameters['id'] = { description: 'layout component id' }
   */
   try {
     const { id } = req.params;
@@ -141,8 +141,8 @@ controller.show = async (req, res, next) => {
 controller.create = async (req, res, next) => {
   /*
     #swagger.tags = ['Layout Component']
-    #swagger.summary = 'Create layout components'
-    #swagger.description = 'Create a new building component layout.'
+    #swagger.summary = 'Create Layout Component'
+    #swagger.description = 'Create a new layout component used on the floor-plan canvas.'
     #swagger.parameters['obj'] = {
       in: 'body', description: 'Create layout components',
       schema: { $ref: '#/definitions/BodyLayoutComponentSchema' }
@@ -201,9 +201,9 @@ controller.create = async (req, res, next) => {
 controller.update = async (req, res, next) => {
   /*
     #swagger.tags = ['Layout Component']
-    #swagger.summary = 'Update layout components'
-    #swagger.description = 'Update an existing building component layout.'
-    #swagger.parameters['id'] = { description: 'id layout component' }
+    #swagger.summary = 'Update Layout Component'
+    #swagger.description = 'Update an existing layout component identified by its ID.'
+    #swagger.parameters['id'] = { description: 'layout component id' }
     #swagger.parameters['obj'] = {
       in: 'body', description: 'Update layout components',
       schema: { $ref: '#/definitions/BodyLayoutComponentSchema' }
@@ -275,8 +275,9 @@ controller.update = async (req, res, next) => {
 controller.delete = async (req, res, next) => {
   /*
     #swagger.tags = ['Layout Component']
-    #swagger.summary = 'Delete layout components'
-    #swagger.parameters['id'] = { description: 'id layout component' }
+    #swagger.summary = 'Delete Layout Component (soft delete)'
+    #swagger.description = 'Soft-delete a layout component and release its linked image.'
+    #swagger.parameters['id'] = { description: 'layout component id' }
   */
   try {
     const { id } = req.params;

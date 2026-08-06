@@ -9,6 +9,8 @@ const mongoSanitize = require("express-mongo-sanitize");
 // Swagger
 const swaggerUi = require("swagger-ui-express");
 const swaggerDocument = require("./swagger-output.json");
+// Scalar API Reference (alternatif dokumentasi, spec sama dgn Swagger)
+const { mountScalar } = require("./resource/helper/scalar-docs");
 
 const app = express();
 const memory = require("process").memoryUsage();
@@ -38,7 +40,7 @@ app.use(
       directives: {
         ...helmet.contentSecurityPolicy.getDefaultDirectives(),
         "img-src": ["'self'", "data:", "blob:"], // Mengizinkan gambar dari server sendiri dan data URI
-        "script-src": ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"], // 'unsafe-inline' sering dibutuhkan Swagger
+        "script-src": ["'self'", "'unsafe-inline'"], // Swagger UI + Scalar (bundle self-host) di-serve dari origin sendiri
         "style-src": [
           "'self'",
           "'unsafe-inline'",
@@ -100,6 +102,8 @@ app.use(cookieParser());
 app.use(express.static(path.join(__dirname, "public")));
 
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+// Scalar API Reference tersedia di /reference (spec: /reference/openapi.json)
+mountScalar(app, swaggerDocument, "/reference");
 
 runMainSeeder();
 runFinanceSeeder();

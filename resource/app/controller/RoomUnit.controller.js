@@ -29,7 +29,8 @@ const nameExistsOnFloor = async (floorId, name, session, excludeId) => {
 controller.index = async (req, res, next) => {
   /*
     #swagger.tags = ['Room Unit']
-    #swagger.summary = 'List room units'
+    #swagger.summary = 'List Room Units'
+    #swagger.description = 'Retrieve a paginated list of room units with optional search and filters by branch, building, floor and status.'
     #swagger.parameters['page'] = { default: 1 }
     #swagger.parameters['limit'] = { default: 10 }
     #swagger.parameters['search'] = { default: '', description: 'name / code' }
@@ -87,8 +88,9 @@ controller.index = async (req, res, next) => {
 controller.show = async (req, res, next) => {
   /*
     #swagger.tags = ['Room Unit']
-    #swagger.summary = 'Detail room unit'
-    #swagger.parameters['id'] = { description: 'id room unit' }
+    #swagger.summary = 'Get Room Unit detail'
+    #swagger.description = 'Retrieve the details of a single room unit by its ID.'
+    #swagger.parameters['id'] = { description: 'room unit id' }
   */
   try {
     const { id } = req.params;
@@ -116,8 +118,8 @@ controller.show = async (req, res, next) => {
 controller.create = async (req, res, next) => {
   /*
     #swagger.tags = ['Room Unit']
-    #swagger.summary = 'Create room unit'
-    #swagger.description = 'Code & name auto-follow the running count per floor (AGRK-FLR1-RM<n> / Room <n>).'
+    #swagger.summary = 'Create Room Unit'
+    #swagger.description = 'Create a room unit where the code and name follow the running room count on the floor.'
     #swagger.parameters['obj'] = {
       in: 'body', description: 'Create room unit',
       schema: { $ref: '#/definitions/BodyRoomUnitSchema' }
@@ -221,8 +223,9 @@ controller.create = async (req, res, next) => {
 controller.update = async (req, res, next) => {
   /*
     #swagger.tags = ['Room Unit']
-    #swagger.summary = 'Update room unit'
-    #swagger.parameters['id'] = { description: 'id room unit' }
+    #swagger.summary = 'Update Room Unit'
+    #swagger.description = 'Update an existing room unit identified by its ID.'
+    #swagger.parameters['id'] = { description: 'room unit id' }
   */
   try {
     const { id } = req.params;
@@ -295,8 +298,9 @@ controller.update = async (req, res, next) => {
 controller.delete = async (req, res, next) => {
   /*
     #swagger.tags = ['Room Unit']
-    #swagger.summary = 'Delete room unit (soft delete)'
-    #swagger.parameters['id'] = { description: 'id room unit' }
+    #swagger.summary = 'Delete Room Unit (soft delete)'
+    #swagger.description = 'Soft-delete a room unit by marking it as deleted without removing the record.'
+    #swagger.parameters['id'] = { description: 'room unit id' }
   */
   try {
     const { id } = req.params;

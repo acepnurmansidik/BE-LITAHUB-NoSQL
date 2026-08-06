@@ -54,7 +54,8 @@ const resolveProductCode = async (payload, session) => {
 controller.index = async (req, res, next) => {
   /*
     #swagger.tags = ['Product']
-    #swagger.summary = 'List products'
+    #swagger.summary = 'List Products'
+    #swagger.description = 'Retrieve a paginated list of products with optional category and unit filters.'
     #swagger.parameters['page'] = { default: 1 }
     #swagger.parameters['limit'] = { default: 10 }
     #swagger.parameters['search'] = { default: '', description: 'name / code' }
@@ -102,7 +103,7 @@ controller.index = async (req, res, next) => {
 controller.show = async (req, res, next) => {
   /*
     #swagger.tags = ['Product']
-    #swagger.summary = 'Detail product'
+    #swagger.summary = 'Get Product detail'
     #swagger.parameters['id'] = { description: 'id product' }
   */
   try {
@@ -129,7 +130,8 @@ controller.show = async (req, res, next) => {
 controller.create = async (req, res, next) => {
   /*
     #swagger.tags = ['Product']
-    #swagger.summary = 'Create product'
+    #swagger.summary = 'Create Product'
+    #swagger.description = 'Create a new product, generating its code automatically when not provided.'
     #swagger.parameters['obj'] = {
       in: 'body', description: 'Create product',
       schema: { $ref: '#/definitions/BodyProductSchema' }
@@ -185,7 +187,8 @@ controller.create = async (req, res, next) => {
 controller.update = async (req, res, next) => {
   /*
     #swagger.tags = ['Product']
-    #swagger.summary = 'Update product'
+    #swagger.summary = 'Update Product'
+    #swagger.description = 'Update an existing product and reconcile its linked image.'
     #swagger.parameters['id'] = { description: 'id product' }
   */
   try {
@@ -253,7 +256,7 @@ controller.update = async (req, res, next) => {
 controller.delete = async (req, res, next) => {
   /*
     #swagger.tags = ['Product']
-    #swagger.summary = 'Delete product (soft delete)'
+    #swagger.summary = 'Delete Product (soft delete)'
     #swagger.parameters['id'] = { description: 'id product' }
   */
   try {

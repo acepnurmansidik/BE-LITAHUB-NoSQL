@@ -47,8 +47,12 @@ const getStorage = (folder) => {
   });
 };
 
-// Fungsi middleware yang menerima parameter folder
-const uploadFilesMiddleware = (folder) => {
+// Fungsi middleware yang menerima parameter folder.
+// options:
+//   - field    : nama field form-data (default "proofs")
+//   - maxCount : jumlah file maksimum (default 5)
+const uploadFilesMiddleware = (folder, options = {}) => {
+  const { field = "proofs", maxCount = 5 } = options;
   const formatAllowed = "jpg jpeg png doc docx csv pdf";
 
   const upload = multer({
@@ -70,7 +74,7 @@ const uploadFilesMiddleware = (folder) => {
     limits: { fileSize: 15 * 1024 * 1024 }, // 15 Mb
   });
 
-  return upload.fields([{ name: "proofs", maxCount: 5 }]);
+  return upload.fields([{ name: field, maxCount }]);
 };
 
 module.exports = uploadFilesMiddleware;

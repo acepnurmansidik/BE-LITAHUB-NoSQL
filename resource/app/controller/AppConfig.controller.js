@@ -7,9 +7,9 @@ const controller = {};
 
 controller.getAllVersionPlatforms = async (req, res, next) => {
   /*
-    #swagger.tags = ['Application Configuration']
-    #swagger.summary = 'Get active latest version'
-    #swagger.description = 'Retrieve the current active and latest version configuration for a specific platform.'
+    #swagger.tags = ['App Configuration']
+    #swagger.summary = 'List platform versions'
+    #swagger.description = 'Retrieve all version configurations for the given platform.'
     #swagger.parameters['platform'] = { in: 'query', required: true, type: 'string', description: 'Platform name (e.g., android, ios)' }
   */
   try {
@@ -41,8 +41,8 @@ controller.getAllVersionPlatforms = async (req, res, next) => {
 // 1. DIBERSIHKAN & DISESUAIKAN: Mengambil konfigurasi aktif versi terbaru
 controller.getLatestVersion = async (req, res, next) => {
   /*
-    #swagger.tags = ['Application Configuration']
-    #swagger.summary = 'Get active latest version'
+    #swagger.tags = ['App Configuration']
+    #swagger.summary = 'Get latest active version'
     #swagger.description = 'Retrieve the current active and latest version configuration for a specific platform.'
     #swagger.parameters['type'] = { in: 'query', required: true, type: 'string', description: 'Platform name (e.g., android, ios)' }
   */
@@ -62,8 +62,8 @@ controller.getLatestVersion = async (req, res, next) => {
 // 2. DIBERSIHKAN & DISESUAIKAN: Mengambil seluruh riwayat rilis versi
 controller.getReleaseHistory = async (req, res, next) => {
   /*
-    #swagger.tags = ['Application Configuration']
-    #swagger.summary = 'Get version release history'
+    #swagger.tags = ['App Configuration']
+    #swagger.summary = 'List version release history'
     #swagger.description = 'Retrieve the historical logs of all released versions filtered by platform.'
     #swagger.parameters['platform'] = { in: 'query', required: true, type: 'string', description: 'Platform name (e.g., android, ios)' }
   */
@@ -93,7 +93,7 @@ controller.getReleaseHistory = async (req, res, next) => {
 // 3. DIBERSIHKAN & DISESUAIKAN: Mengupdate versi dan otomatis mencatat log riwayat
 controller.updateVersion = async (req, res, next) => {
   /*
-    #swagger.tags = ['Application Configuration']
+    #swagger.tags = ['App Configuration']
     #swagger.summary = 'Update platform version config'
     #swagger.description = 'Upgrade the platform to a newer semantic version and automatically create a release log entry.'
    #swagger.parameters['obj'] = {
@@ -188,7 +188,7 @@ controller.updateVersion = async (req, res, next) => {
 // 4. DIBERSIHKAN & DISESUAIKAN: Membuat versi dan otomatis mencatat log riwayat
 controller.createVersion = async (req, res, next) => {
   /*
-    #swagger.tags = ['Application Configuratiorsn']
+    #swagger.tags = ['App Configuration']
     #swagger.summary = 'Create platform version config'
     #swagger.description = 'Upgrade the platform to a newer semantic version and automatically create a release log entry.'
     #swagger.parameters['obj'] = {

@@ -1,6 +1,4 @@
-const uploadFilesMiddleware = require("../../middleware/multer");
 const controller = require("../controller/LayoutComponent.controller");
-
 const router = require("express").Router();
 
 router.get("/", controller.index);

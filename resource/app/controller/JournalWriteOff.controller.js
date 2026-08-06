@@ -156,9 +156,9 @@ const buildLines = async (rawLines, session) => {
 
 controller.index = async (req, res, next) => {
   /*
-    #swagger.tags = ['JOURNAL WRITE OFF']
-    #swagger.summary = 'Journal Write Off'
-    #swagger.description = 'Register jurnal penghapusan (write-off)'
+    #swagger.tags = ['Journal Write Off']
+    #swagger.summary = 'List Journal Write-Offs'
+    #swagger.description = 'Returns a paginated register of write-off journal entries.'
     #swagger.parameters['page'] = { default: 1 }
     #swagger.parameters['limit'] = { default: 10 }
     #swagger.parameters['search'] = { default: '', description: 'entry_no / description / reference' }
@@ -229,9 +229,9 @@ controller.index = async (req, res, next) => {
 
 controller.show = async (req, res, next) => {
   /*
-    #swagger.tags = ['JOURNAL WRITE OFF']
-    #swagger.summary = 'Journal Write Off'
-    #swagger.description = 'Detail satu jurnal penghapusan'
+    #swagger.tags = ['Journal Write Off']
+    #swagger.summary = 'Get Journal Write-Off detail'
+    #swagger.description = 'Returns the detail of a single write-off journal entry by id.'
     #swagger.parameters['id'] = { description: 'id journal write off' }
   */
   try {
@@ -253,9 +253,14 @@ controller.show = async (req, res, next) => {
 
 controller.create = async (req, res, next) => {
   /*
-    #swagger.tags = ['JOURNAL WRITE OFF']
-    #swagger.summary = 'Journal Write Off'
-    #swagger.description = 'Buat jurnal penghapusan baru (harus balance)'
+    #swagger.tags = ['Journal Write Off']
+    #swagger.summary = 'Create Journal Write-Off'
+    #swagger.description = 'Creates a new write-off journal entry; total debit must equal total credit.'
+    #swagger.parameters['obj'] = {
+      in: 'body',
+      description: 'Create Journal Write-Off',
+      schema: { $ref: '#/definitions/BodyJournalWriteOffSchema' }
+    }
   */
   try {
     const payload = req.body;
@@ -336,10 +341,15 @@ controller.create = async (req, res, next) => {
 
 controller.update = async (req, res, next) => {
   /*
-    #swagger.tags = ['JOURNAL WRITE OFF']
-    #swagger.summary = 'Journal Write Off'
-    #swagger.description = 'Perbarui jurnal penghapusan (entri POSTED tak bisa diubah)'
+    #swagger.tags = ['Journal Write Off']
+    #swagger.summary = 'Update Journal Write-Off'
+    #swagger.description = 'Updates a write-off journal entry; posted entries can no longer be edited.'
     #swagger.parameters['id'] = { description: 'id journal write off' }
+    #swagger.parameters['obj'] = {
+      in: 'body',
+      description: 'Update Journal Write-Off',
+      schema: { $ref: '#/definitions/BodyJournalWriteOffSchema' }
+    }
   */
   try {
     const { id } = req.params;
@@ -452,9 +462,9 @@ controller.update = async (req, res, next) => {
 
 controller.delete = async (req, res, next) => {
   /*
-    #swagger.tags = ['JOURNAL WRITE OFF']
-    #swagger.summary = 'Journal Write Off'
-    #swagger.description = 'Hapus jurnal penghapusan (soft delete). Entri POSTED ditolak.'
+    #swagger.tags = ['Journal Write Off']
+    #swagger.summary = 'Delete Journal Write-Off (soft delete)'
+    #swagger.description = 'Soft-deletes a write-off journal entry; posted entries cannot be deleted.'
     #swagger.parameters['id'] = { description: 'id journal write off' }
   */
   try {

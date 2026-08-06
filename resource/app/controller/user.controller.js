@@ -10,9 +10,9 @@ const ENV = require("../../utils/config");
 
 controller.getAllUser = async (req, res, next) => {
   /*
-    #swagger.tags = ['USERS / IAM']
-    #swagger.summary = 'User'
-    #swagger.description = 'untuk referensi group'
+    #swagger.tags = ['User & IAM']
+    #swagger.summary = 'List Users'
+    #swagger.description = 'Retrieve a paginated list of users with their role and auth details.'
     #swagger.parameters['search'] = { default: '', description: 'search by value' }
     #swagger.parameters['limit'] = { default: 10, description: 'limit' }
     #swagger.parameters['page'] = { default: 1, description: 'page' }
@@ -68,9 +68,9 @@ controller.getAllUser = async (req, res, next) => {
 
 controller.getUserPermissionAccess = async (req, res, next) => {
   /*
-    #swagger.tags = ['USERS / IAM']
-    #swagger.summary = 'User'
-    #swagger.description = 'untuk referensi group'
+    #swagger.tags = ['User & IAM']
+    #swagger.summary = 'Get User permission access'
+    #swagger.description = 'Retrieve a user with their resolved role permissions and path access.'
      #swagger.parameters['id'] = { description: 'User ID (UsersModel ID)' }
   */
   try {
@@ -107,11 +107,13 @@ controller.getUserPermissionAccess = async (req, res, next) => {
 
 controller.createUser = async (req, res, next) => {
   /*
-      #swagger.tags = ['USERS / IAM']
+      #swagger.tags = ['User & IAM']
       #swagger.summary = 'Create User'
+      #swagger.description = 'Create a user account with its auth credentials and assigned role.'
       #swagger.parameters['id'] = { description: 'User ID (UsersModel ID)' }
       #swagger.parameters['obj'] = {
         in: 'body',
+        description: 'Create User',
         schema: { $ref: '#/definitions/BodyUserIAMSchema' }
       }
     */
@@ -176,11 +178,13 @@ controller.updateUser = async (req, res, next) => {
   session.startTransaction();
   try {
     /*
-      #swagger.tags = ['USERS / IAM']
+      #swagger.tags = ['User & IAM']
       #swagger.summary = 'Update User'
+      #swagger.description = 'Update a user profile along with its auth credentials and role.'
       #swagger.parameters['id'] = { description: 'User ID (UsersModel ID)' }
       #swagger.parameters['obj'] = {
         in: 'body',
+        description: 'Update User',
         schema: { $ref: '#/definitions/BodyUserIAMSchema' }
       }
     */
@@ -251,10 +255,10 @@ controller.updateUser = async (req, res, next) => {
 controller.deleteUser = async (req, res, next) => {
   try {
     /*
-    #swagger.tags = ['USERS / IAM']
-    #swagger.summary = 'User'
-    #swagger.description = 'untuk referensi group'
-    #swagger.parameters['id'] = { description: 'id role' }
+    #swagger.tags = ['User & IAM']
+    #swagger.summary = 'Delete User (soft delete)'
+    #swagger.description = 'Soft delete a user by its ID.'
+    #swagger.parameters['id'] = { description: 'User ID (UsersModel ID)' }
   */
     const { id } = req.params;
     const result = await crudServices.delete(UsersModel, { id });

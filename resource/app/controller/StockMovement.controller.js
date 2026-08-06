@@ -10,7 +10,8 @@ const controller = {};
 controller.index = async (req, res, next) => {
   /*
     #swagger.tags = ['Stock Movement']
-    #swagger.summary = 'List stock movements'
+    #swagger.summary = 'List Stock Movements'
+    #swagger.description = 'Retrieve a paginated list of stock movements with optional product, warehouse and type filters.'
     #swagger.parameters['page'] = { default: 1 }
     #swagger.parameters['limit'] = { default: 10 }
     #swagger.parameters['product_id'] = { default: '' }
@@ -52,7 +53,7 @@ controller.index = async (req, res, next) => {
 controller.show = async (req, res, next) => {
   /*
     #swagger.tags = ['Stock Movement']
-    #swagger.summary = 'Detail stock movement'
+    #swagger.summary = 'Get Stock Movement detail'
     #swagger.parameters['id'] = { description: 'id stock movement' }
   */
   try {
@@ -78,7 +79,8 @@ controller.show = async (req, res, next) => {
 controller.create = async (req, res, next) => {
   /*
     #swagger.tags = ['Stock Movement']
-    #swagger.summary = 'Create stock movement'
+    #swagger.summary = 'Create Stock Movement'
+    #swagger.description = 'Create a new stock movement (IN, OUT, ADJUSTMENT or TRANSFER).'
     #swagger.parameters['obj'] = {
       in: 'body', description: 'Create stock movement',
       schema: { $ref: '#/definitions/BodyStockMovementSchema' }
@@ -144,7 +146,8 @@ controller.create = async (req, res, next) => {
 controller.update = async (req, res, next) => {
   /*
     #swagger.tags = ['Stock Movement']
-    #swagger.summary = 'Update stock movement'
+    #swagger.summary = 'Update Stock Movement'
+    #swagger.description = 'Update a stock movement and apply stock position changes when it is approved.'
     #swagger.parameters['id'] = { description: 'id stock movement' }
   */
   try {
@@ -251,7 +254,7 @@ controller.update = async (req, res, next) => {
 controller.delete = async (req, res, next) => {
   /*
     #swagger.tags = ['Stock Movement']
-    #swagger.summary = 'Delete stock movement (soft delete)'
+    #swagger.summary = 'Delete Stock Movement (soft delete)'
     #swagger.parameters['id'] = { description: 'id stock movement' }
   */
   try {

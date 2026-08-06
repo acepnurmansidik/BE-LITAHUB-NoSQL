@@ -95,9 +95,9 @@ const buildLines = async (rawLines, session) => {
 
 controller.index = async (req, res, next) => {
   /*
-    #swagger.tags = ['JOURNAL ENTRY']
-    #swagger.summary = 'Journal Entry'
-    #swagger.description = 'Master jurnal umum (double-entry)'
+    #swagger.tags = ['Journal Entry']
+    #swagger.summary = 'List Journal Entries'
+    #swagger.description = 'Returns a paginated list of general journal entries (double-entry).'
     #swagger.parameters['page'] = { default: 1 }
     #swagger.parameters['limit'] = { default: 10 }
     #swagger.parameters['search'] = { default: '', description: 'search by entry_no / description / reference' }
@@ -160,9 +160,9 @@ controller.index = async (req, res, next) => {
 
 controller.show = async (req, res, next) => {
   /*
-    #swagger.tags = ['JOURNAL ENTRY']
-    #swagger.summary = 'Journal Entry'
-    #swagger.description = 'Detail satu entri jurnal'
+    #swagger.tags = ['Journal Entry']
+    #swagger.summary = 'Get Journal Entry detail'
+    #swagger.description = 'Returns the detail of a single journal entry by id.'
     #swagger.parameters['id'] = { description: 'id journal entry' }
   */
   try {
@@ -185,12 +185,12 @@ controller.show = async (req, res, next) => {
 
 controller.create = async (req, res, next) => {
   /*
-    #swagger.tags = ['JOURNAL ENTRY']
-    #swagger.summary = 'Journal Entry'
-    #swagger.description = 'Buat entri jurnal baru (harus balance)'
+    #swagger.tags = ['Journal Entry']
+    #swagger.summary = 'Create Journal Entry'
+    #swagger.description = 'Creates a new journal entry; total debit must equal total credit.'
     #swagger.parameters['obj'] = {
       in: 'body',
-      description: 'Create journal entry',
+      description: 'Create Journal Entry',
       schema: { $ref: '#/definitions/BodyJournalEntrySchema' }
     }
   */
@@ -260,13 +260,13 @@ controller.create = async (req, res, next) => {
 
 controller.update = async (req, res, next) => {
   /*
-    #swagger.tags = ['JOURNAL ENTRY']
-    #swagger.summary = 'Journal Entry'
-    #swagger.description = 'Perbarui entri jurnal (entri POSTED tak bisa diubah)'
+    #swagger.tags = ['Journal Entry']
+    #swagger.summary = 'Update Journal Entry'
+    #swagger.description = 'Updates a journal entry; posted entries can no longer be edited.'
     #swagger.parameters['id'] = { description: 'id journal entry' }
     #swagger.parameters['obj'] = {
       in: 'body',
-      description: 'Update journal entry',
+      description: 'Update Journal Entry',
       schema: { $ref: '#/definitions/BodyJournalEntrySchema' }
     }
   */
@@ -362,9 +362,9 @@ controller.update = async (req, res, next) => {
 
 controller.delete = async (req, res, next) => {
   /*
-    #swagger.tags = ['JOURNAL ENTRY']
-    #swagger.summary = 'Journal Entry'
-    #swagger.description = 'Hapus entri jurnal (soft delete). Entri POSTED ditolak.'
+    #swagger.tags = ['Journal Entry']
+    #swagger.summary = 'Delete Journal Entry (soft delete)'
+    #swagger.description = 'Soft-deletes a journal entry; posted entries cannot be deleted.'
     #swagger.parameters['id'] = { description: 'id journal entry' }
   */
   try {

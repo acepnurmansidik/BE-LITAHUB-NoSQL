@@ -6,6 +6,9 @@ const FacilitySchema = require("./branch.schema");
 const LayoutComponentSchema = require("./LayoutComponent.schema");
 const InventorySchema = require("./inventory.schema");
 const DepartmentSchema = require("./Department.schema");
+const FinanceSchema = require("./finance.schema");
+const ProcurementSchema = require("./procurement.schema");
+const SecuritySchema = require("./security.schema");
 
 const GlobalSchema = {
   ...Authchema.Register,
@@ -18,6 +21,9 @@ const GlobalSchema = {
   ...LayoutComponentSchema,
   ...InventorySchema,
   ...DepartmentSchema,
+  ...FinanceSchema,
+  ...ProcurementSchema,
+  ...SecuritySchema,
 };
 
 module.exports = GlobalSchema;
