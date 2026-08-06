@@ -328,32 +328,4 @@ controller.delete = async (req, res, next) => {
   }
 };
 
-controller.uploadImage = async (req, res, next) => {
-  /*
-    #swagger.tags = ['Layout Component']
-    #swagger.summary = 'Upload layout component image (stored in Image model)'
-    #swagger.consumes = ['multipart/form-data']
-    #swagger.parameters['proofs'] = {
-      in: 'formData', type: 'array', required: true,
-      collectionFormat: 'multi', items: { type: 'file' }
-    }
-  */
-  try {
-    const files = req?.files?.proofs;
-    if (!files || files.length === 0) {
-      throw new BadRequest("No image uploaded. Use form field 'proofs'.");
-    }
-    const fileResult = await globalService.uploadFiles(files);
-    const data = fileResult.map((item) => ({ _id: item.id, path: item.path }));
-
-    res.status(200).json({
-      success: true,
-      message: "Image uploaded successfully!",
-      data,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
 module.exports = controller;

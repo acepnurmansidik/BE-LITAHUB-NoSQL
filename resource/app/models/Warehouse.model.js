@@ -14,6 +14,7 @@ const WarehouseSchema = new mongoose.Schema(
       type: String,
       required: [true, "Warehouse name is required"],
       trim: true,
+      uppercase: true,
     },
     slug: {
       type: String,

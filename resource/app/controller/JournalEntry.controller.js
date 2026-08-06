@@ -10,14 +10,10 @@ const controller = {};
 const { runWithOptionalTransaction } = crudServices;
 
 const STATUSES = ["DRAFT", "POSTED"];
+const MODULE_NAME = JournalEntryModel.collection.collectionName;
 
 // Bulatkan ke 2 desimal untuk menghindari galat floating-point saat cek balance.
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
-
-// Nomor jurnal unik JE-YYYYMM-#### dari koleksi `sequence` (modul JE, atomik
-// & sekuensial per bulan/tahun).
-const generateEntryNo = (date, session) =>
-  generateSequenceNo({ module: "JE", prefix: "JE", date, session });
 
 // Validasi & normalisasi baris jurnal. Memastikan tiap baris menunjuk akun
 // POSTABLE (bukan header) yang ada, hanya salah satu debit/credit terisi, lalu
@@ -112,26 +108,42 @@ controller.index = async (req, res, next) => {
     const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
     const { search, status } = req.query;
 
-    const query = { is_delete: { $ne: true } };
+    const baseQuery = { is_delete: { $ne: true } };
     if (search) {
-      query["$or"] = [
+      baseQuery["$or"] = [
         { entry_no: { $regex: search, $options: "i" } },
         { description: { $regex: search, $options: "i" } },
         { reference: { $regex: search, $options: "i" } },
       ];
     }
+
+    const query = { ...baseQuery };
     if (status && STATUSES.includes(String(status).toUpperCase())) {
       query.status = String(status).toUpperCase();
     }
 
-    const [data, total] = await Promise.all([
+    const [data, total, counts] = await Promise.all([
       JournalEntryModel.find(query)
         .sort({ date: -1, entry_no: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .select("-is_delete"),
       JournalEntryModel.countDocuments(query),
+      JournalEntryModel.aggregate([
+        { $match: baseQuery },
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ]),
     ]);
+
+    // { STATUS: jumlah, ... } + total keseluruhan (mengikuti filter search).
+    const status_counts = counts.reduce(
+      (acc, c) => {
+        if (c._id) acc[c._id] = c.count;
+        acc.ALL += c.count;
+        return acc;
+      },
+      { ALL: 0 },
+    );
 
     res.status(200).json({
       success: true,
@@ -139,6 +151,7 @@ controller.index = async (req, res, next) => {
       data,
       page_size: total,
       current_page: page,
+      status_counts,
     });
   } catch (err) {
     next(err);
@@ -197,7 +210,12 @@ controller.create = async (req, res, next) => {
         session,
       );
 
-      const entry_no = await generateEntryNo(date, session);
+      const entry_no = await generateSequenceNo({
+        module: MODULE_NAME,
+        prefix: "JE",
+        date,
+        session,
+      });
 
       const [entry] = await JournalEntryModel.create(
         [

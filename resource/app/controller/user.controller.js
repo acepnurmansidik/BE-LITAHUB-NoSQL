@@ -6,6 +6,7 @@ const AuthUserModel = require("../models/Auth.model");
 const UsersModel = require("../models/Users.model");
 const controller = {};
 const bcrypt = require("bcrypt");
+const ENV = require("../../utils/config");
 
 controller.getAllUser = async (req, res, next) => {
   /*
@@ -21,10 +22,10 @@ controller.getAllUser = async (req, res, next) => {
     const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
     const { search, branch_id } = req.query;
 
-    const query = {
-      is_delete: { $ne: true },
-      name: { $ne: "Akun Super Admin" },
-    };
+    const query = { is_delete: { $ne: true } };
+    if (ENV.server.nodeEnv === "production") {
+      query.name = { $ne: "Akun Super Admin" };
+    }
     if (branch_id) query.branch_id = branch_id;
     if (search) {
       query["$or"] = [{ name: { $regex: search, $options: "i" } }];

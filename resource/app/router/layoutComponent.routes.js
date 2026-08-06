@@ -9,10 +9,5 @@ router.get("/:id", controller.show);
 router.post("/", controller.create);
 router.put("/:id", controller.update);
 router.delete("/:id", controller.delete);
-router.post(
-  "/upload",
-  uploadFilesMiddleware("component-layout"),
-  controller.uploadImage,
-);
 
 module.exports = router;

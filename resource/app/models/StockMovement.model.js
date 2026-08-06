@@ -23,11 +23,23 @@ const StockMovementSchema = new mongoose.Schema(
       ref: "Uom",
       default: null,
     },
+    // Referensi Good Receipt — terisi bila movement berasal dari transaksi GR.
+    good_receipt_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "GoodReceipt",
+      default: null,
+    },
     type: {
       type: String,
       enum: ["IN", "OUT", "ADJUSTMENT", "TRANSFER"],
       required: [true, "Movement type is required"],
       uppercase: true,
+    },
+    status: {
+      type: String,
+      enum: ["DRAFT", "APPROVED"],
+      required: [true, "Status is required"],
+      default: "DRAFT",
     },
     quantity: {
       type: Number,

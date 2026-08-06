@@ -229,14 +229,22 @@ controller.uploadFile = async (req, res, next) => {
     }
   */
   try {
-    const fileResult = await globalService.uploadFiles(req.files.proofs);
-    const _temp = fileResult.map((item) => {
-      return { _id: item.id, path: item.path };
-    });
+    const files = req?.files?.proofs;
+    if (!files || files.length === 0) {
+      throw new BadRequest("No image uploaded. Use form field 'proofs'.");
+    }
+    // Hanya satu gambar per produk — ambil file pertama saja.
+    const fileResult = await globalService.uploadFiles([files[0]]);
+    const data = fileResult.map((item) => ({
+      _id: item.id,
+      path: item.path,
+    }));
 
-    res
-      .status(200)
-      .json({ status: true, message: "succcess created images", data: _temp });
+    res.status(200).json({
+      success: true,
+      message: "Image uploaded successfully!",
+      data,
+    });
   } catch (err) {
     next(err);
   }

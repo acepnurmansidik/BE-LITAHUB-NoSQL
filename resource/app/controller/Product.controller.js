@@ -1,12 +1,21 @@
 const { runWithOptionalTransaction } = require("../../helper/crudService");
 const { nextInventorySeq } = require("../../helper/inventorySequence");
+const globalService = require("../../helper/global-func");
 const BadRequest = require("../../utils/errors/bad-request");
 const NotFound = require("../../utils/errors/not-found");
 const ProductModel = require("../models/Product.model");
 const ProductCategoryModel = require("../models/ProductCategory.model");
+const ImageModel = require("../models/Image.model");
 const LogActionModel = require("../models/LogAction.model");
 
 const controller = {};
+
+// Set flag `status` pada Image (true = dipakai, false = lepas). Aman untuk id
+// null/undefined (langsung di-skip).
+const setImageStatus = async (imageId, status, session) => {
+  if (!imageId) return;
+  await ImageModel.findOneAndUpdate({ _id: imageId }, { status }, { session });
+};
 
 // Cek apakah kode produk sudah dipakai (non-deleted).
 const productCodeExists = async (code, session) =>
@@ -71,6 +80,7 @@ controller.index = async (req, res, next) => {
       ProductModel.find(query)
         .populate("product_category_id", "name prefix")
         .populate("uom_id", "name code")
+        .populate("product_image_id", "path")
         .sort({ _id: -1 })
         .skip((page - 1) * limit)
         .limit(limit),
@@ -102,7 +112,8 @@ controller.show = async (req, res, next) => {
       is_delete: { $ne: true },
     })
       .populate("product_category_id", "name prefix")
-      .populate("uom_id", "name code");
+      .populate("uom_id", "name code")
+      .populate("product_image_id", "path");
     if (!data) throw new NotFound(`Data with id '${id}' not found!`);
 
     res.status(200).json({
@@ -137,6 +148,9 @@ controller.create = async (req, res, next) => {
       const [product] = await ProductModel.create([{ ...payload, code }], {
         session,
       });
+
+      // Tandai gambar terpilih sebagai dipakai (status = true).
+      await setImageStatus(product.product_image_id, true, session);
 
       await LogActionModel.create(
         [
@@ -186,11 +200,23 @@ controller.update = async (req, res, next) => {
       if (!doc) throw new NotFound(`Data with id '${id}' not found!`);
 
       const before = doc.toObject();
+      const prevImageId = doc.product_image_id
+        ? String(doc.product_image_id)
+        : null;
 
       // Slug stabil setelah dibuat.
       delete payload.slug;
       doc.set(payload);
       await doc.save({ session });
+
+      // Bila gambar berubah: lepas gambar lama, pakai gambar baru.
+      const nextImageId = doc.product_image_id
+        ? String(doc.product_image_id)
+        : null;
+      if (prevImageId !== nextImageId) {
+        await setImageStatus(prevImageId, false, session);
+        await setImageStatus(nextImageId, true, session);
+      }
 
       await LogActionModel.findOneAndUpdate(
         { target_id: id },
@@ -243,6 +269,9 @@ controller.delete = async (req, res, next) => {
       const before = doc.toObject();
       doc.is_delete = true;
       await doc.save({ session });
+
+      // Lepas gambar (status = false) saat produk dihapus.
+      await setImageStatus(doc.product_image_id, false, session);
 
       await LogActionModel.findOneAndUpdate(
         { target_id: id },

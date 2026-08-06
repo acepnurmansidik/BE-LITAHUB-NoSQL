@@ -1,5 +1,4 @@
-const controller = require("../controller/Product.controller");
-const uploadFilesMiddleware = require("../../middleware/multer");
+const controller = require("../controller/PurchaseOrder.controller");
 
 const router = require("express").Router();
 

@@ -13,6 +13,11 @@ const ProductSchema = new mongoose.Schema(
       ref: "Uom",
       required: [true, "Uom reference is required"],
     },
+    product_image_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Image",
+      default: null,
+    },
     code: {
       type: String,
       required: [true, "Product code is required"],

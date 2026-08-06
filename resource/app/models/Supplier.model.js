@@ -14,6 +14,7 @@ const SupplierSchema = new mongoose.Schema(
       type: String,
       required: [true, "Supplier name is required"],
       trim: true,
+      uppercase: true,
     },
     slug: {
       type: String,

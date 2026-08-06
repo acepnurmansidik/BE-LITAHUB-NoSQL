@@ -13,11 +13,6 @@ const router = require("express").Router();
 router.get("/", controller.index);
 router.get("/types", controller.types);
 router.post("/", controller.create);
-router.post(
-  "/upload",
-  uploadFilesMiddleware("ref-parameter"),
-  controller.uploadImage,
-);
 router.put("/:id", controller.update);
 router.delete("/:id", controller.delete);
 

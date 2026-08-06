@@ -11,6 +11,7 @@ const LogActionModel = require("../models/LogAction.model");
 const controller = {};
 
 const { runWithOptionalTransaction } = crudServices;
+const MODULE_NAME = JournalWriteOffModel.collection.collectionName;
 
 const STATUSES = ["DRAFT", "POSTED"];
 const WRITE_OFF_TYPES = ["RECEIVABLE", "PAYABLE", "INVENTORY", "OTHER"];
@@ -169,17 +170,20 @@ controller.index = async (req, res, next) => {
     const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
     const { search, status, write_off_type } = req.query;
 
-    const query = { is_delete: { $ne: true } };
+    const baseQuery = { is_delete: { $ne: true } };
     if (search) {
-      query["$or"] = [
+      baseQuery["$or"] = [
         { entry_no: { $regex: search, $options: "i" } },
         { description: { $regex: search, $options: "i" } },
         { reference: { $regex: search, $options: "i" } },
       ];
     }
+
+    const query = { ...baseQuery };
     if (status && STATUSES.includes(String(status).toUpperCase())) {
       query.status = String(status).toUpperCase();
     }
+
     if (
       write_off_type &&
       WRITE_OFF_TYPES.includes(String(write_off_type).toUpperCase())
@@ -187,14 +191,28 @@ controller.index = async (req, res, next) => {
       query.write_off_type = String(write_off_type).toUpperCase();
     }
 
-    const [data, total] = await Promise.all([
+    const [data, total, counts] = await Promise.all([
       JournalWriteOffModel.find(query)
         .sort({ date: -1, entry_no: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .select("-is_delete"),
       JournalWriteOffModel.countDocuments(query),
+      JournalWriteOffModel.aggregate([
+        { $match: baseQuery },
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ]),
     ]);
+
+    // { STATUS: jumlah, ... } + total keseluruhan (mengikuti filter search).
+    const status_counts = counts.reduce(
+      (acc, c) => {
+        if (c._id) acc[c._id] = c.count;
+        acc.ALL += c.count;
+        return acc;
+      },
+      { ALL: 0 },
+    );
 
     res.status(200).json({
       success: true,
@@ -202,6 +220,7 @@ controller.index = async (req, res, next) => {
       data,
       page_size: total,
       current_page: page,
+      status_counts,
     });
   } catch (err) {
     next(err);
@@ -254,7 +273,7 @@ controller.create = async (req, res, next) => {
       );
       // Nomor urut dari koleksi `sequence` (modul WO, per bulan/tahun).
       const entry_no = await generateSequenceNo({
-        module: "WO",
+        module: MODULE_NAME,
         prefix: "WO",
         date,
         session,

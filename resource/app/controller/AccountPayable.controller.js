@@ -8,6 +8,7 @@ const LogActionModel = require("../models/LogAction.model");
 const controller = {};
 
 const { runWithOptionalTransaction } = crudServices;
+const MODULE_NAME = AccountPayableModel.collection.collectionName;
 
 const STATUSES = ["DRAFT", "OPEN", "PARTIAL", "PAID", "WRITE_OFF"];
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
@@ -92,7 +93,7 @@ controller.index = async (req, res, next) => {
     const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
     const { search, status } = req.query;
 
-    const query = { is_delete: { $ne: true } };
+    const baseQuery = { is_delete: { $ne: true } };
     if (search) {
       query["$or"] = [
         { entry_no: { $regex: search, $options: "i" } },
@@ -101,18 +102,33 @@ controller.index = async (req, res, next) => {
         { reference: { $regex: search, $options: "i" } },
       ];
     }
+    const query = { ...baseQuery };
     if (status && STATUSES.includes(String(status).toUpperCase())) {
       query.status = String(status).toUpperCase();
     }
 
-    const [data, total] = await Promise.all([
+    const [data, total, counts] = await Promise.all([
       AccountPayableModel.find(query)
         .sort({ date: -1, entry_no: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .select("-is_delete"),
       AccountPayableModel.countDocuments(query),
+      AccountPayableModel.aggregate([
+        { $match: baseQuery },
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ]),
     ]);
+
+    // { STATUS: jumlah, ... } + total keseluruhan (mengikuti filter search).
+    const status_counts = counts.reduce(
+      (acc, c) => {
+        if (c._id) acc[c._id] = c.count;
+        acc.ALL += c.count;
+        return acc;
+      },
+      { ALL: 0 },
+    );
 
     res.status(200).json({
       success: true,
@@ -120,6 +136,7 @@ controller.index = async (req, res, next) => {
       data,
       page_size: total,
       current_page: page,
+      status_counts,
     });
   } catch (err) {
     next(err);
@@ -177,7 +194,7 @@ controller.create = async (req, res, next) => {
       );
       // Nomor urut dari koleksi `sequence` (modul AP, per bulan/tahun).
       const entry_no = await generateSequenceNo({
-        module: "AP",
+        module: MODULE_NAME,
         prefix: "AP",
         date,
         session,
@@ -255,9 +272,8 @@ controller.update = async (req, res, next) => {
       if (payload.due_date !== undefined) {
         if (payload.due_date) {
           const dueDate = new Date(payload.due_date);
-          if (Number.isNaN(dueDate.getTime())) {
+          if (Number.isNaN(dueDate.getTime()))
             throw new BadRequest("Invalid due date.");
-          }
           doc.due_date = dueDate;
         } else {
           doc.due_date = undefined;

@@ -5,33 +5,6 @@ const BadRequest = require("../../utils/errors/bad-request");
 
 const controller = {};
 
-controller.uploadImage = async (req, res, next) => {
-  /*
-    #swagger.tags = ['REF PARAMETER']
-    #swagger.summary = 'Upload ref parameter icon (stored in Image model)'
-    #swagger.consumes = ['multipart/form-data']
-    #swagger.parameters['proofs'] = {
-      in: 'formData', type: 'array', required: true,
-      collectionFormat: 'multi', items: { type: 'file' }
-    }
-  */
-  try {
-    const files = req?.files?.proofs;
-    if (!files || files.length === 0) {
-      throw new BadRequest("No image uploaded. Use form field 'proofs'.");
-    }
-    const fileResult = await globalService.uploadFiles(files);
-    const data = fileResult.map((item) => ({ _id: item.id, path: item.path }));
-    res.status(200).json({
-      success: true,
-      message: "Image uploaded successfully!",
-      data,
-    });
-  } catch (err) {
-    next(err);
-  }
-};
-
 controller.index = async (req, res, next) => {
   /*
   #swagger.tags = ['REF PARAMETER']
@@ -61,7 +34,6 @@ controller.index = async (req, res, next) => {
 
     const [data, total] = await Promise.all([
       ReffparamModel.find(query)
-        .populate("branch_id", "name code")
         .sort({ _id: -1 })
         .skip((page - 1) * limit)
         .limit(limit),

@@ -76,11 +76,9 @@ controller.getAllModule = async (req, res, next) => {
     const { search, page, limit = 10 } = req.query;
     const skip = (page - 1) * limit;
 
-    const arrFilter = [];
     if (search) {
-      arrFilter.push({ name: { $regex: search, $options: "i" } });
+      query["$or"] = [{ name: { $regex: search, $options: "i" } }];
     }
-    if (arrFilter.length) query["$or"] = arrFilter;
 
     const [page_size, result] = await Promise.all([
       ModuleModel.countDocuments(query),

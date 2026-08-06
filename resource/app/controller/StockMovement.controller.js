@@ -3,6 +3,7 @@ const BadRequest = require("../../utils/errors/bad-request");
 const NotFound = require("../../utils/errors/not-found");
 const StockMovementModel = require("../models/StockMovement.model");
 const LogActionModel = require("../models/LogAction.model");
+const StockPositionModel = require("../models/StockPosition.model");
 
 const controller = {};
 
@@ -124,7 +125,7 @@ controller.create = async (req, res, next) => {
             ],
           },
         ],
-        { session },
+        { session, ordered: true },
       );
 
       return movement;
@@ -157,9 +158,63 @@ controller.update = async (req, res, next) => {
       }).session(session);
       if (!doc) throw new NotFound(`Data with id '${id}' not found!`);
 
+      if (doc.status === "APPROVED")
+        throw new BadRequest(
+          "This record has already been approved and cannot be modified.",
+        );
+
       const before = doc.toObject();
+
       doc.set(payload);
-      await doc.save({ session });
+      const newData = await doc.save({ session });
+
+      if (payload.status === "APPROVED") {
+        const dStockPositionUpdate = {};
+        if (newData.type === "IN") {
+          dStockPositionUpdate["$inc"] = { quantity: newData.quantity };
+        }
+        if (newData.type === "OUT") {
+          dStockPositionUpdate["$inc"] = { quantity: -newData.quantity };
+          const checkQtyAvailable = await StockPositionModel.findOne({
+            product_id: newData.product_id,
+            warehouse_id: newData.warehouse_id,
+          }).session(session);
+          if (newData.quantity > checkQtyAvailable.quantity) {
+            throw new BadRequest("Requested quantity exceeds available stock.");
+          }
+        }
+        if (newData.type === "ADJUSTMENT") {
+          dStockPositionUpdate["$set"] = { quantity: newData.quantity };
+        }
+        if (newData.type === "TRANSFER") {
+          dStockPositionUpdate["$inc"] = { quantity: -newData.quantity };
+          const checkQtyAvailable = await StockPositionModel.findOne({
+            product_id: newData.product_id,
+            warehouse_id: newData.warehouse_id,
+          }).session(session);
+          if (newData.quantity > checkQtyAvailable.quantity) {
+            throw new BadRequest("Requested quantity exceeds available stock.");
+          }
+          // increment product to destination warehouse
+          await StockPositionModel.findOneAndUpdate(
+            {
+              product_id: newData.product_id,
+              warehouse_id: newData.destination_warehouse_id,
+            },
+            { $inc: { quantity: newData.quantity } },
+            { upsert: true, session },
+          );
+        }
+
+        const resultStockPost = await StockPositionModel.findOneAndUpdate(
+          {
+            product_id: doc.product_id,
+            warehouse_id: doc.warehouse_id,
+          },
+          dStockPositionUpdate,
+          { upsert: true, session, new: true },
+        );
+      }
 
       await LogActionModel.findOneAndUpdate(
         { target_id: id },

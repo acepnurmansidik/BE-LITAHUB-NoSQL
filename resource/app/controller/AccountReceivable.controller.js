@@ -13,6 +13,7 @@ const controller = {};
 // cache "update_account_receivable:*" lalu broadcast ke semua client, jadi
 // client cukup listen event ini lalu refetch (lihat contoh useEffect di FE).
 const AR_EVENT = "update_account_receivable";
+const MODULE_NAME = AccountReceivableModel.collection.collectionName;
 
 const { runWithOptionalTransaction } = crudServices;
 
@@ -99,44 +100,50 @@ controller.index = async (req, res, next) => {
     const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
     const { search, status } = req.query;
 
-    const query = { is_delete: { $ne: true } };
+    const baseQuery = { is_delete: { $ne: true } };
     if (search) {
-      query["$or"] = [
+      baseQuery["$or"] = [
         { entry_no: { $regex: search, $options: "i" } },
         { party_name: { $regex: search, $options: "i" } },
         { description: { $regex: search, $options: "i" } },
         { reference: { $regex: search, $options: "i" } },
       ];
     }
+    const query = { ...baseQuery };
     if (status && STATUSES.includes(String(status).toUpperCase())) {
       query.status = String(status).toUpperCase();
     }
 
-    // Cache list di Redis (per kombinasi page/limit/search/status).
-    // Kalau Redis mati, getOrSetCache otomatis fallback ke query DB.
-    const cacheKey = `${AR_EVENT}:${page}:${limit}:${search || ""}:${
-      status || ""
-    }`;
-    const result = await getOrSetCache({
-      key: cacheKey,
-      expiry: 60,
-      fetchFunction: async () => {
-        const [data, total] = await Promise.all([
-          AccountReceivableModel.find(query)
-            .sort({ date: -1, entry_no: -1 })
-            .skip((page - 1) * limit)
-            .limit(limit)
-            .select("-is_delete"),
-          AccountReceivableModel.countDocuments(query),
-        ]);
-        return { data, page_size: total, current_page: page };
+    const [data, total, counts] = await Promise.all([
+      AccountReceivableModel.find(query)
+        .sort({ date: -1, entry_no: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .select("-is_delete"),
+      AccountReceivableModel.countDocuments(query),
+      AccountReceivableModel.aggregate([
+        { $match: baseQuery },
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ]),
+    ]);
+
+    // { STATUS: jumlah, ... } + total keseluruhan (mengikuti filter search).
+    const status_counts = counts.reduce(
+      (acc, c) => {
+        if (c._id) acc[c._id] = c.count;
+        acc.ALL += c.count;
+        return acc;
       },
-    });
+      { ALL: 0 },
+    );
 
     res.status(200).json({
       success: true,
       message: "Data retrieved successfully!",
-      ...result,
+      data,
+      page_size: total,
+      current_page: page,
+      status_counts,
     });
   } catch (err) {
     next(err);
@@ -194,7 +201,7 @@ controller.create = async (req, res, next) => {
       );
       // Nomor urut dari koleksi `sequence` (modul AR, per bulan/tahun).
       const entry_no = await generateSequenceNo({
-        module: "AR",
+        module: MODULE_NAME,
         prefix: "AR",
         date,
         session,

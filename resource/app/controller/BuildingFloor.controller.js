@@ -202,23 +202,29 @@ controller.update = async (req, res, next) => {
       doc.set(payload);
       await doc.save({ session });
 
-      if (payload.floor_plan_url_id !== before.floor_plan_url_id.toString()) {
-        await ImageModel.findOneAndUpdate(
-          { _id: before.floor_plan_url_id },
-          { status: false },
-          { session },
-        );
-      }
-
-      if (
-        payload.floor_plan_url_id !== before.floor_plan_url_id.toString() ||
-        !before.floor_plan_url_id
-      ) {
-        await ImageModel.findOneAndUpdate(
-          { _id: payload.floor_plan_url_id },
-          { status: true },
-          { session },
-        );
+      // Swap flag `status` gambar denah lantai — aman untuk id null (floor
+      // tanpa gambar sebelumnya, atau gambar dilepas saat update).
+      const prevImageId = before.floor_plan_url_id
+        ? before.floor_plan_url_id.toString()
+        : null;
+      const nextImageId = payload.floor_plan_url_id
+        ? payload.floor_plan_url_id.toString()
+        : null;
+      if (prevImageId !== nextImageId) {
+        if (prevImageId) {
+          await ImageModel.findOneAndUpdate(
+            { _id: prevImageId },
+            { status: false },
+            { session },
+          );
+        }
+        if (nextImageId) {
+          await ImageModel.findOneAndUpdate(
+            { _id: nextImageId },
+            { status: true },
+            { session },
+          );
+        }
       }
       await LogActionModel.findOneAndUpdate(
         { target_id: id },
@@ -304,34 +310,6 @@ controller.delete = async (req, res, next) => {
       success: true,
       message: "Data has been deleted!",
       data: result,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-controller.uploadImage = async (req, res, next) => {
-  /*
-    #swagger.tags = ['Building Floor']
-    #swagger.summary = 'Upload floor plan image (stored in Image model)'
-    #swagger.consumes = ['multipart/form-data']
-    #swagger.parameters['proofs'] = {
-      in: 'formData', type: 'array', required: true,
-      collectionFormat: 'multi', items: { type: 'file' }
-    }
-  */
-  try {
-    const files = req?.files?.proofs;
-    if (!files || files.length === 0) {
-      throw new BadRequest("No image uploaded. Use form field 'proofs'.");
-    }
-    const fileResult = await globalService.uploadFiles(files);
-    const data = fileResult.map((item) => ({ _id: item.id, path: item.path }));
-
-    res.status(200).json({
-      success: true,
-      message: "Image uploaded successfully!",
-      data,
     });
   } catch (error) {
     next(error);

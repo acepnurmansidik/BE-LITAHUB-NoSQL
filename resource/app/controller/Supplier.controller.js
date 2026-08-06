@@ -174,6 +174,7 @@ controller.update = async (req, res, next) => {
       const before = doc.toObject();
 
       // Slug bersifat stabil setelah dibuat — jangan ditimpa dari body.
+      delete payload.code;
       delete payload.slug;
 
       doc.set(payload);

@@ -4,6 +4,7 @@ const RoleModel = require("../models/Role.model");
 const RoleModuleModel = require("../models/RoleModule.model");
 const PathAccessModel = require("../models/PathAccess.model");
 const logActionModel = require("../models/LogAction.model");
+const ENV = require("../../utils/config");
 const controller = {};
 
 // Bangun & simpan dokumen anak (RoleModule + PathAccess) untuk sebuah role,
@@ -65,7 +66,10 @@ controller.getAllRole = async (req, res, next) => {
     const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
     const { search, branch_id } = req.query;
 
-    const query = { is_delete: { $ne: true }, slug: { $ne: "super-ultraman" } };
+    const query = { is_delete: { $ne: true } };
+    if (ENV.server.nodeEnv === "production") {
+      query.slug = { $ne: "super-ultraman" };
+    }
     if (branch_id) query.branch_id = branch_id;
     if (search) {
       query["$or"] = [{ name: { $regex: search, $options: "i" } }];

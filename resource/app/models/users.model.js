@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const { model, Schema } = mongoose;
 
-const SysUserModel = Schema(
+const UserSchema = new Schema(
   {
     auth_id: {
       type: mongoose.Types.ObjectId,
@@ -37,4 +37,4 @@ const SysUserModel = Schema(
   },
 );
 
-module.exports = model("User", SysUserModel);
+module.exports = mongoose.models.User || model("User", UserSchema);

@@ -27,11 +27,16 @@ const warehouseRouter = require("../resource/app/router/warehouse.routes");
 const supplierRouter = require("../resource/app/router/supplier.routes");
 const stockPositionRouter = require("../resource/app/router/stockPosition.routes");
 const stockMovementRouter = require("../resource/app/router/stockMovement.routes");
+const departmentRouter = require("../resource/app/router/department.routes");
+const purchaseRequestRouter = require("../resource/app/router/purchaseRequest.routes");
+const purchaseOrderRouter = require("../resource/app/router/purchaseOrder.routes");
+const goodReceiptRouter = require("../resource/app/router/goodReceipt.routes");
 
 router.use("/app-configs", appConfigRouter);
 router.use("/auth", authRouter);
 router.use("/users", userRouter);
 router.use("/ref-parameter", refparamRouter);
+router.use("/department", departmentRouter);
 
 // SETTING
 router.use("/layout-component", LayoutComponentRouter);
@@ -61,6 +66,11 @@ router.use("/warehouse", warehouseRouter);
 router.use("/supplier", supplierRouter);
 router.use("/stock-position", stockPositionRouter);
 router.use("/stock-movement", stockMovementRouter);
+
+// PROCUREMENT
+router.use("/purchase-request", purchaseRequestRouter);
+router.use("/purchase-order", purchaseOrderRouter);
+router.use("/good-receipt", goodReceiptRouter);
 
 router.use(AuthorizeUserLogin);
 
