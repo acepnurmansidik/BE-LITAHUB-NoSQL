@@ -72,6 +72,18 @@ const DetailProductItemSchema = new Schema(
     },
     subtotal: { type: Number, default: 0 },
 
+    // Siklus status item (English):
+    //  PENDING          = baru dibuat di PR, belum masuk PO,
+    //  ORDERED          = sudah ditautkan ke PO (dipesan),
+    //  PARTIAL_RECEIVED = sebagian qty diterima via Good Receipt,
+    //  RECEIVED         = seluruh qty diterima via Good Receipt.
+    status: {
+      type: String,
+      enum: ["PENDING", "ORDERED", "PARTIAL_RECEIVED", "RECEIVED"],
+      default: "PENDING",
+      uppercase: true,
+    },
+
     is_delete: { type: Boolean, required: true, default: false },
   },
   {

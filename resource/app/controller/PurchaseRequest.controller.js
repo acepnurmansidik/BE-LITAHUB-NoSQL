@@ -50,7 +50,11 @@ controller.index = async (req, res, next) => {
           path: "items",
           match: { is_delete: { $ne: true } },
           populate: [
-            { path: "product_id", select: "code name" },
+            {
+              path: "product_id",
+              select: "code name supplier_id",
+              populate: { path: "supplier_id", select: "code name" },
+            },
             { path: "uom_id", select: "code name" },
             { path: "supplier_id", select: "code name" },
           ],
@@ -102,7 +106,11 @@ controller.show = async (req, res, next) => {
         path: "items",
         match: { is_delete: { $ne: true } },
         populate: [
-          { path: "product_id", select: "code name" },
+          {
+            path: "product_id",
+            select: "code name supplier_id",
+            populate: { path: "supplier_id", select: "code name" },
+          },
           { path: "uom_id", select: "code name" },
           { path: "supplier_id", select: "code name" },
         ],
@@ -166,6 +174,7 @@ controller.create = async (req, res, next) => {
             reference: String(payload.reference ?? "").trim(),
             description: String(payload.description ?? "").trim(),
             total_amount: total,
+            created_by: req?.login?.user_id ?? null,
           },
         ],
         { session },
@@ -333,7 +342,10 @@ controller.delete = async (req, res, next) => {
       if (doc.status === "SUBMITTED") {
         throw new BadRequest("Submitted purchase request cannot be deleted.");
       }
-      if (doc.purchase_order_id) {
+      if (
+        Array.isArray(doc.purchase_order_id) &&
+        doc.purchase_order_id.length
+      ) {
         throw new BadRequest(
           "Cannot delete: this request is already linked to a purchase order.",
         );

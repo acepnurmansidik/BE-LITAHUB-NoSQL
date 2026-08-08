@@ -80,6 +80,7 @@ controller.index = async (req, res, next) => {
     const [data, total] = await Promise.all([
       ProductModel.find(query)
         .populate("product_category_id", "name prefix")
+        .populate("supplier_id", "name code")
         .populate("uom_id", "name code")
         .populate("product_image_id", "path")
         .sort({ _id: -1 })

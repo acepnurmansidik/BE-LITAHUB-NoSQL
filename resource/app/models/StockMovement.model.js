@@ -59,10 +59,9 @@ const StockMovementSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
-    is_delete: {
-      type: Boolean,
-      default: false,
-    },
+
+    is_delete: { type: Boolean, default: false },
+    created_by: { type: mongoose.Types.ObjectId, ref: "User", default: null },
   },
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },

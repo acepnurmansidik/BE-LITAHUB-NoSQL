@@ -14,11 +14,40 @@ const USER_IAM = [
       },
     ],
   },
+  // MOD_PROCUREMENT ======================================================================
+  {
+    name: "MOD_PROCUREMENT",
+    title: "Procurement",
+    sequence: 2,
+    permission: [
+      {
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-clipboard-pen-line"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h2"/><path d="M16 4h2a2 2 0 0 1 2 2v4"/><path d="M4.012 16.737A2 2 0 0 0 3 18.478V20a2 2 0 0 0 2 2h1.522a2 2 0 0 0 1.74-1.012"/><path d="M21.378 12.626a1 1 0 0 0-3.004-3.004l-4.01 4.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"/></svg>`,
+        menu_name: "Purchase Request",
+        path: "/procurement/purchase-requests",
+        actions: ["view", "create", "update", "delete"],
+        children: [],
+      },
+      {
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-shopping-cart"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>`,
+        menu_name: "Purchase Order",
+        path: "/procurement/purchase-orders",
+        actions: ["view", "create", "update", "delete"],
+        children: [],
+      },
+      {
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-package-check"><path d="m16 16 2 2 4-4"/><path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l2-1.14"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg>`,
+        menu_name: "Good Receipt",
+        path: "/procurement/good-receipts",
+        actions: ["view", "create", "update", "delete"],
+        children: [],
+      },
+    ],
+  },
   // MOD_FINANCE =========================================================================
   {
     name: "MOD_FINANCE",
     title: "Finance",
-    sequence: 2,
+    sequence: 3,
     permission: [
       {
         icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-book-open-icon lucide-book-open"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>`,
@@ -61,7 +90,7 @@ const USER_IAM = [
   {
     name: "MOD_INVENTORY",
     title: "Inventory",
-    sequence: 3,
+    sequence: 4,
     permission: [
       {
         icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-layers"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/></svg>`,
@@ -110,35 +139,6 @@ const USER_IAM = [
         menu_name: "Stock Movement",
         path: "/inventory/stock-movements",
         actions: ["view", "create", "update", "delete", "approved"],
-        children: [],
-      },
-    ],
-  },
-  // MOD_PROCUREMENT ======================================================================
-  {
-    name: "MOD_PROCUREMENT",
-    title: "Procurement",
-    sequence: 4,
-    permission: [
-      {
-        icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-clipboard-pen-line"><rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h2"/><path d="M16 4h2a2 2 0 0 1 2 2v4"/><path d="M4.012 16.737A2 2 0 0 0 3 18.478V20a2 2 0 0 0 2 2h1.522a2 2 0 0 0 1.74-1.012"/><path d="M21.378 12.626a1 1 0 0 0-3.004-3.004l-4.01 4.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"/></svg>`,
-        menu_name: "Purchase Request",
-        path: "/procurement/purchase-requests",
-        actions: ["view", "create", "update", "delete"],
-        children: [],
-      },
-      {
-        icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-shopping-cart"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>`,
-        menu_name: "Purchase Order",
-        path: "/procurement/purchase-orders",
-        actions: ["view", "create", "update", "delete"],
-        children: [],
-      },
-      {
-        icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-package-check"><path d="m16 16 2 2 4-4"/><path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l2-1.14"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg>`,
-        menu_name: "Good Receipt",
-        path: "/procurement/good-receipts",
-        actions: ["view", "create", "update", "delete"],
         children: [],
       },
     ],

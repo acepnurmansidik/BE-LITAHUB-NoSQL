@@ -6,8 +6,10 @@ const { model, Schema } = mongoose;
 // Header saja; detail item disimpan di koleksi terpisah `purchase_items`
 // (foreignField: purchase_request_id) dan diakses via virtual `items`.
 //  - request_no : nomor auto (PR-YYYYMM-#####),
-//  - status     : DRAFT (default) -> SUBMITTED (via tombol submit di list),
-//  - purchase_order_id : flag apakah PR sudah dibuatkan PO (opsional).
+//  - status     : DRAFT (default) -> SUBMITTED -> (PARTIAL_)ORDERED ->
+//                 PARTIAL_RECEIVED -> CLOSED (dihitung dari status item),
+//  - purchase_order_id : daftar PO yang menampung item PR ini (bisa banyak,
+//                 karena item bisa dipecah per-supplier menjadi beberapa PO).
 // ============================================================
 const PurchaseRequestSchema = new Schema(
   {
@@ -30,6 +32,8 @@ const PurchaseRequestSchema = new Schema(
         "DRAFT",
         "SUBMITTED",
         "APPROVED",
+        "PARTIAL_ORDERED",
+        "ORDERED",
         "PARTIAL_RECEIVED",
         "RECEIVED",
         "CLOSED",
@@ -37,14 +41,16 @@ const PurchaseRequestSchema = new Schema(
       default: "DRAFT",
       uppercase: true,
     },
-    // Terisi bila PR sudah di-generate menjadi PO (penanda "sudah dipesan").
+    // PO yang menampung item PR ini. Bisa lebih dari satu karena item bisa
+    // dipecah per-supplier menjadi beberapa PO. Dihitung otomatis dari item.
     purchase_order_id: {
-      type: Schema.Types.ObjectId,
-      ref: "PurchaseOrder",
-      default: null,
+      type: [{ type: Schema.Types.ObjectId, ref: "PurchaseOrder" }],
+      default: [],
     },
     total_amount: { type: Number, default: 0 },
-    is_delete: { type: Boolean, required: true, default: false },
+
+    is_delete: { type: Boolean, default: false },
+    created_by: { type: mongoose.Types.ObjectId, ref: "User", default: null },
   },
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },

@@ -16,6 +16,94 @@ const PARENT_FIELDS = [
   "good_receipt_id",
 ];
 
+// ============================================================
+// STATUS ITEM & DOKUMEN INDUK
+// Status item (detail_product_items.status):
+//   PENDING -> ORDERED -> PARTIAL_RECEIVED -> RECEIVED
+// Dihitung dari received_qty & keterikatan PO; jadi sumber kebenaran untuk
+// men-derive status PR & PO.
+// ============================================================
+
+// Status sebuah item dari qty diterima & apakah sudah masuk PO.
+const itemStatusFrom = (item) => {
+  const q = Number(item.quantity) || 0;
+  const r = Number(item.received_qty) || 0;
+  if (r > 0 && r >= q) return "RECEIVED";
+  if (r > 0) return "PARTIAL_RECEIVED";
+  if (item.purchase_order_id) return "ORDERED";
+  return "PENDING";
+};
+
+// Status PR dari kumpulan item-nya.
+//  semua RECEIVED                 -> CLOSED
+//  ada RECEIVED/PARTIAL_RECEIVED  -> PARTIAL_RECEIVED
+//  semua PENDING                  -> SUBMITTED (kembali ke awal, siap dipesan)
+//  semua ORDERED                  -> ORDERED
+//  campuran PENDING & ORDERED     -> PARTIAL_ORDERED
+const derivePurchaseRequestStatus = (items) => {
+  if (!items.length) return null;
+  const st = items.map((i) => i.status);
+  if (st.every((s) => s === "RECEIVED")) return "CLOSED";
+  if (st.some((s) => s === "RECEIVED" || s === "PARTIAL_RECEIVED"))
+    return "PARTIAL_RECEIVED";
+  if (st.every((s) => s === "PENDING")) return "SUBMITTED";
+  if (st.every((s) => s === "ORDERED")) return "ORDERED";
+  return "PARTIAL_ORDERED";
+};
+
+// Status PO dari kumpulan item-nya.
+//  semua RECEIVED                 -> CLOSED
+//  ada RECEIVED/PARTIAL_RECEIVED  -> PARTIAL_RECEIVED
+//  selain itu (semua ORDERED)     -> SUBMITTED (sudah dipesan, belum diterima)
+const derivePurchaseOrderStatus = (items) => {
+  if (!items.length) return null;
+  const st = items.map((i) => i.status);
+  if (st.every((s) => s === "RECEIVED")) return "CLOSED";
+  if (st.some((s) => s === "RECEIVED" || s === "PARTIAL_RECEIVED"))
+    return "PARTIAL_RECEIVED";
+  return "SUBMITTED";
+};
+
+// Recompute status PO & PR (dan array purchase_order_id PR) dari item terkini.
+// Dipanggil setelah operasi PO (create/update/delete) & GR (receive/delete).
+const syncParentStatuses = async ({ poIds = [], prIds = [], session }) => {
+  const s = session ?? null;
+  const uniq = (arr) => [...new Set(arr.filter(Boolean).map(String))];
+
+  for (const poId of uniq(poIds)) {
+    const [items, po] = await Promise.all([
+      DetailProductItemModel.find({
+        purchase_order_id: poId,
+        is_delete: { $ne: true },
+      }).session(s),
+      PurchaseOrderModel.findById(poId).select("status").session(s),
+    ]);
+    const status = derivePurchaseOrderStatus(items);
+    // Jangan auto-promote PO yang masih DRAFT (harus disubmit manual dulu).
+    if (status && po && po.status !== "DRAFT") {
+      await PurchaseOrderModel.updateOne({ _id: poId }, { status }).session(s);
+    }
+  }
+
+  for (const prId of uniq(prIds)) {
+    const [items, pr] = await Promise.all([
+      DetailProductItemModel.find({
+        purchase_request_id: prId,
+        is_delete: { $ne: true },
+      }).session(s),
+      PurchaseRequestModel.findById(prId).select("status").session(s),
+    ]);
+    const poLinks = uniq(
+      items.filter((i) => i.purchase_order_id).map((i) => i.purchase_order_id),
+    );
+    const update = { purchase_order_id: poLinks };
+    const status = derivePurchaseRequestStatus(items);
+    // Jangan turunkan PR yang masih DRAFT (belum disubmit).
+    if (status && pr && pr.status !== "DRAFT") update.status = status;
+    await PurchaseRequestModel.updateOne({ _id: prId }, update).session(s);
+  }
+};
+
 // Validasi & normalisasi baris item. Tiap baris wajib menunjuk product yang
 // ada. UOM diambil dari raw.uom_id, atau default dari master product bila
 // kosong. Kode/nama product di-snapshot; subtotal = qty * price.
@@ -170,20 +258,27 @@ const syncPurchaseOrderItems = async ({ poId, payloadItems, session }) => {
     }).session(s);
   }
 
-  // Doc dari PR yang dilepas dari PO -> hard delete (cascade ke PR).
-  const removedPrDocIds = existing
-    .filter((d) => d.purchase_request_id && !reuseIds.includes(String(d._id)))
-    .map((d) => d._id);
-  if (removedPrDocIds.length) {
-    await DetailProductItemModel.deleteMany({
-      _id: { $in: removedPrDocIds },
-    }).session(s);
+  // Doc dari PR yang dilepas dari PO -> dikembalikan ke PR (status PENDING),
+  // BUKAN dihapus, agar item-nya masih bisa dibuatkan PO lagi.
+  const removedPrDocs = existing.filter(
+    (d) => d.purchase_request_id && !reuseIds.includes(String(d._id)),
+  );
+  const removedPrIds = [
+    ...new Set(removedPrDocs.map((d) => String(d.purchase_request_id))),
+  ];
+  if (removedPrDocs.length) {
+    await DetailProductItemModel.updateMany(
+      { _id: { $in: removedPrDocs.map((d) => d._id) } },
+      {
+        $set: { purchase_order_id: null, status: "PENDING", supplier_id: null },
+      },
+    ).session(s);
   }
 
-  // Link/reuse doc PR ke PO.
+  // Link/reuse doc PR ke PO + tandai ORDERED.
   for (const id of reuseIds) {
     const edit = singleEdits.get(id);
-    const set = { purchase_order_id: poId };
+    const set = { purchase_order_id: poId, status: "ORDERED" };
     if (edit) {
       const q = round2(edit.quantity);
       const p = round2(edit.price);
@@ -198,10 +293,14 @@ const syncPurchaseOrderItems = async ({ poId, payloadItems, session }) => {
     );
   }
 
-  // Buat baris manual baru milik PO.
+  // Buat baris manual baru milik PO (langsung ORDERED).
   if (manualItems.length) {
     await DetailProductItemModel.insertMany(
-      manualItems.map((it) => ({ ...it, purchase_order_id: poId })),
+      manualItems.map((it) => ({
+        ...it,
+        purchase_order_id: poId,
+        status: "ORDERED",
+      })),
       { session: s, ordered: true },
     );
   }
@@ -221,7 +320,86 @@ const syncPurchaseOrderItems = async ({ poId, payloadItems, session }) => {
         .map((d) => String(d.purchase_request_id)),
     ),
   ];
-  return { total, linkedPrIds };
+  const affectedPrIds = [...new Set([...linkedPrIds, ...removedPrIds])];
+  return { total, linkedPrIds, affectedPrIds };
+};
+
+// ============================================================
+// PURCHASE ORDER (CREATE, split per-supplier) — tautkan sekumpulan item ke
+// SATU PO yang baru dibuat:
+//  - baris reuse (source_item_ids = _id detail PR) -> doc PR di-set
+//    purchase_order_id + supplier + status ORDERED (reuse shared doc),
+//  - baris manual -> doc baru milik PO (status ORDERED).
+// Mengembalikan { total, prIds } (prIds = PR sumber yang tersentuh).
+// ============================================================
+const linkItemsToPurchaseOrder = async ({
+  poId,
+  supplierId,
+  items,
+  session,
+}) => {
+  const s = session ?? null;
+  const list = Array.isArray(items) ? items : [];
+  const reuseLines = list.filter(
+    (it) => Array.isArray(it.source_item_ids) && it.source_item_ids.length > 0,
+  );
+  const manualRaw = list.filter(
+    (it) => !Array.isArray(it.source_item_ids) || it.source_item_ids.length < 1,
+  );
+
+  for (const l of reuseLines) {
+    const single = l.source_item_ids.length === 1;
+    for (const id of l.source_item_ids.map(String)) {
+      const set = {
+        purchase_order_id: poId,
+        supplier_id: supplierId || l.supplier_id || null,
+        status: "ORDERED",
+      };
+      if (single) {
+        const q = round2(l.quantity);
+        const p = round2(l.price);
+        if (q > 0) {
+          set.quantity = q;
+          set.subtotal = round2(q * p);
+        }
+        set.price = p;
+        if (l.uom_id) set.uom_id = l.uom_id;
+      }
+      await DetailProductItemModel.updateOne(
+        { _id: id },
+        { $set: set },
+      ).session(s);
+    }
+  }
+
+  if (manualRaw.length) {
+    const { items: built } = await buildDetailProductItems(manualRaw, s);
+    await DetailProductItemModel.insertMany(
+      built.map((it) => ({
+        ...it,
+        supplier_id: supplierId || it.supplier_id || null,
+        purchase_order_id: poId,
+        status: "ORDERED",
+      })),
+      { session: s, ordered: true },
+    );
+  }
+
+  const linked = await DetailProductItemModel.find({
+    purchase_order_id: poId,
+    is_delete: { $ne: true },
+  }).session(s);
+  const total = round2(
+    linked.reduce((a, d) => a + (Number(d.subtotal) || 0), 0),
+  );
+  const prIds = [
+    ...new Set(
+      linked
+        .filter((d) => d.purchase_request_id)
+        .map((d) => String(d.purchase_request_id)),
+    ),
+  ];
+  return { total, prIds };
 };
 
 // Status GR otomatis dari received_qty tiap item:
@@ -299,9 +477,17 @@ const syncGoodReceiptItems = async ({
     if (!d.purchase_order_id && !d.purchase_request_id) {
       await DetailProductItemModel.deleteOne({ _id: d._id }).session(s);
     } else {
+      // Lepas dari GR & kembalikan status: ORDERED bila masih milik PO, kalau
+      // tidak PENDING (kembali ke PR saja).
       await DetailProductItemModel.updateOne(
         { _id: d._id },
-        { $set: { good_receipt_id: null, received_qty: 0 } },
+        {
+          $set: {
+            good_receipt_id: null,
+            received_qty: 0,
+            status: d.purchase_order_id ? "ORDERED" : "PENDING",
+          },
+        },
       ).session(s);
     }
   }
@@ -309,6 +495,10 @@ const syncGoodReceiptItems = async ({
   // Reuse doc PO: set good_receipt_id + received_qty + warehouse (per baris,
   // per source id). quantity/price/subtotal PO dibiarkan.
   for (const l of reuseLines) {
+    const q = Number(l.quantity) || 0;
+    const r = Number(l.received_qty) || 0;
+    // Status item dari qty diterima; 0 = kembali ORDERED (masih dipesan).
+    const status = r > 0 ? (r >= q ? "RECEIVED" : "PARTIAL_RECEIVED") : "ORDERED";
     for (const id of l.source_item_ids.map(String)) {
       await DetailProductItemModel.updateOne(
         { _id: id },
@@ -317,6 +507,7 @@ const syncGoodReceiptItems = async ({
             good_receipt_id: grId,
             received_qty: l.received_qty,
             warehouse_id: l.warehouse_id,
+            status,
           },
         },
       ).session(s);
@@ -326,15 +517,18 @@ const syncGoodReceiptItems = async ({
   // Baris manual -> doc baru milik GR.
   if (manualLines.length) {
     const { items: built } = await buildDetailProductItems(manualLines, s);
-    const docs = built.map((it, i) => ({
-      ...it,
-      good_receipt_id: grId,
-      received_qty: manualLines[i].received_qty,
-      warehouse_id: manualLines[i].warehouse_id,
-      subtotal: round2(
-        (Number(manualLines[i].received_qty) || 0) * (Number(it.price) || 0),
-      ),
-    }));
+    const docs = built.map((it, i) => {
+      const q = Number(it.quantity) || 0;
+      const r = Number(manualLines[i].received_qty) || 0;
+      return {
+        ...it,
+        good_receipt_id: grId,
+        received_qty: r,
+        warehouse_id: manualLines[i].warehouse_id,
+        subtotal: round2(r * (Number(it.price) || 0)),
+        status: r > 0 ? (r >= q ? "RECEIVED" : "PARTIAL_RECEIVED") : "PENDING",
+      };
+    });
     await DetailProductItemModel.insertMany(docs, {
       session: s,
       ordered: true,
@@ -353,7 +547,30 @@ const syncGoodReceiptItems = async ({
     ),
   );
   const status = deriveGoodReceiptStatus(linked);
-  return { total, status };
+
+  // PO & PR yang tersentuh (dari doc reuse + doc yang dilepas) untuk recompute
+  // status induk setelah GR berubah.
+  const affectedDocs = await DetailProductItemModel.find({
+    _id: {
+      $in: [...new Set([...reuseIds, ...existing.map((d) => String(d._id))])],
+    },
+  }).session(s);
+  const affectedPoIds = [
+    ...new Set(
+      affectedDocs
+        .filter((d) => d.purchase_order_id)
+        .map((d) => String(d.purchase_order_id)),
+    ),
+  ];
+  const affectedPrIds = [
+    ...new Set(
+      affectedDocs
+        .filter((d) => d.purchase_request_id)
+        .map((d) => String(d.purchase_request_id)),
+    ),
+  ];
+
+  return { total, status, affectedPoIds, affectedPrIds };
 };
 
 // ============================================================
@@ -389,28 +606,9 @@ const reconcileGoodReceiptStock = async ({ grId, session }) => {
   ]);
 
   const moves = [];
-  // Akumulasi qty dipesan (quantity) vs diterima (qty_received) per PO & per PR.
-  // Kunci map = string id (ObjectId sebagai kunci objek tidak akan cocok antar
-  // dokumen), agar total lintas item benar → menentukan status akhir.
-  const dataPO = new Map();
-  const dataPR = new Map();
-
-  const accumulate = (map, id, ordered, received) => {
-    if (!id) return;
-    const key = String(id);
-    const data = map.get(key) || { quantity: 0, qty_received: 0 };
-    data.quantity += ordered;
-    data.qty_received += received;
-    map.set(key, data);
-  };
 
   for (const it of items) {
-    const ordered = Number(it.quantity) || 0;
     const received = Number(it.received_qty) || 0;
-
-    accumulate(dataPO, it.purchase_order_id, ordered, received);
-    accumulate(dataPR, it.purchase_request_id, ordered, received);
-
     if (received <= 0 || !it.warehouse_id) continue;
 
     moves.push({
@@ -437,41 +635,23 @@ const reconcileGoodReceiptStock = async ({ grId, session }) => {
   if (moves.length) {
     await StockMovementModel.insertMany(moves, { session, ordered: true });
   }
-
-  // Status akhir PO/PR: penuh → RECEIVED, sebagian → PARTIAL_RECEIVED.
-  // Bila belum ada yang diterima (0), status tidak diubah (null → skip).
-  const statusOf = ({ quantity, qty_received }) => {
-    if (qty_received <= 0) return null;
-    return qty_received >= quantity ? "CLOSED" : "PARTIAL_RECEIVED";
-  };
-
-  for (const [key, value] of dataPO.entries()) {
-    const status = statusOf(value);
-    if (!status) continue;
-    await PurchaseOrderModel.findOneAndUpdate(
-      { _id: key },
-      { status },
-      { session },
-    );
-  }
-  for (const [key, value] of dataPR.entries()) {
-    const status = statusOf(value);
-    if (!status) continue;
-    await PurchaseRequestModel.findOneAndUpdate(
-      { _id: key },
-      { status },
-      { session },
-    );
-  }
+  // Catatan: status akhir PO/PR (CLOSED / PARTIAL_RECEIVED) di-recompute lewat
+  // syncParentStatuses dari status tiap item, dipanggil oleh GoodReceipt
+  // controller setelah sync + reconcile.
 };
 
 // Opsi populate item standar (product/uom/supplier/warehouse ringkas).
 
 module.exports = {
   round2,
+  itemStatusFrom,
+  derivePurchaseRequestStatus,
+  derivePurchaseOrderStatus,
+  syncParentStatuses,
   buildDetailProductItems,
   syncDetailProductItems,
   syncPurchaseOrderItems,
+  linkItemsToPurchaseOrder,
   syncGoodReceiptItems,
   deriveGoodReceiptStatus,
   reconcileGoodReceiptStock,

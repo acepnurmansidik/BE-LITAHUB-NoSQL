@@ -41,8 +41,17 @@ const PurchaseOrderSchema = new Schema(
       type: [{ type: Schema.Types.ObjectId, ref: "PurchaseRequest" }],
       default: [],
     },
+    // Supplier PO (opsional). Diisi otomatis saat PO dibuat dengan mengelompokkan
+    // item per-supplier (satu PO = satu supplier). Null bila item tanpa supplier.
+    supplier_id: {
+      type: Schema.Types.ObjectId,
+      ref: "Supplier",
+      default: null,
+    },
     total_amount: { type: Number, default: 0 },
-    is_delete: { type: Boolean, required: true, default: false },
+
+    is_delete: { type: Boolean, default: false },
+    created_by: { type: mongoose.Types.ObjectId, ref: "User", default: null },
   },
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },

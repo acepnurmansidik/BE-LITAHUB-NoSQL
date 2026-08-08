@@ -43,6 +43,7 @@ const ProcurementSchema = {
     po_ids: ["000000000000000000000000"],
     warehouse_mode: "SINGLE",
     warehouse_id: "000000000000000000000000",
+    received_proof_id: ["000000000000000000000000"],
     items: [
       {
         product_id: "000000000000000000000000",

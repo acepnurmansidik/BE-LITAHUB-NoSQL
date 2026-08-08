@@ -50,7 +50,16 @@ const GoodReceiptSchema = new Schema(
       uppercase: true,
     },
     total_amount: { type: Number, default: 0 },
-    is_delete: { type: Boolean, required: true, default: false },
+    // Bukti penerimaan (opsional) — daftar file yang diupload lewat /upload/*,
+    // di-reference ke koleksi Image. Status Image di-set true saat dipilih dan
+    // false saat tidak lagi dipilih (lihat GoodReceipt.controller).
+    received_proof_id: {
+      type: [{ type: Schema.Types.ObjectId, ref: "Image" }],
+      default: [],
+    },
+
+    is_delete: { type: Boolean, default: false },
+    created_by: { type: mongoose.Types.ObjectId, ref: "User", default: null },
   },
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },

@@ -8,6 +8,11 @@ const ProductSchema = new mongoose.Schema(
       ref: "ProductCategory",
       required: [true, "Product category reference is required"],
     },
+    supplier_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Supplier",
+      required: [false, "Supplier reference is required"],
+    },
     uom_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Uom",

@@ -1,6 +1,10 @@
 const { runWithOptionalTransaction } = require("../../helper/crudService");
 const { generateSequenceNo } = require("../../helper/sequence");
-const { syncPurchaseOrderItems } = require("../../helper/DetailProductItems");
+const {
+  syncPurchaseOrderItems,
+  linkItemsToPurchaseOrder,
+  syncParentStatuses,
+} = require("../../helper/DetailProductItems");
 const BadRequest = require("../../utils/errors/bad-request");
 const LogActionModel = require("../models/LogAction.model");
 const PurchaseOrderModel = require("../models/PurchaseOrder.model");
@@ -20,10 +24,18 @@ const FILTER_STATUSES = [
 ];
 const MODULE_NAME = PurchaseOrderModel.collection.collectionName;
 
-// Validasi daftar PR yang akan ditautkan ke PO ini. Tiap PR harus ada,
-// ber-status SUBMITTED, dan belum ditautkan ke PO lain (kecuali PO ini
-// sendiri saat update). Mengembalikan daftar id unik (string).
-const validatePurchaseRequests = async ({ prIds, session, currentPoId }) => {
+// PR bisa dipesan (dibuatkan PO) selama masih punya item PENDING, yaitu saat
+// status SUBMITTED (belum dipesan) atau PARTIAL_ORDERED (sebagian dipesan).
+const ORDERABLE_PR_STATUSES = [
+  "SUBMITTED",
+  "PARTIAL_ORDERED",
+  "PARTIAL_RECEIVED",
+];
+
+// Validasi daftar PR sumber. Tiap PR harus ada & masih orderable. Karena satu
+// PR kini bisa tertaut ke banyak PO (item dipecah per-supplier), tidak ada lagi
+// pembatasan "sudah tertaut ke PO lain". Mengembalikan daftar id unik (string).
+const validatePurchaseRequests = async ({ prIds, session }) => {
   const ids = [...new Set((prIds || []).filter(Boolean).map(String))];
   if (ids.length === 0) return [];
 
@@ -35,13 +47,9 @@ const validatePurchaseRequests = async ({ prIds, session, currentPoId }) => {
     throw new BadRequest("Some purchase requests were not found.");
   }
   for (const pr of prs) {
-    if (pr.status !== "SUBMITTED") {
-      throw new BadRequest(`PR ${pr.request_no} is not submitted yet.`);
-    }
-    const linked = pr.purchase_order_id ? String(pr.purchase_order_id) : null;
-    if (linked && linked !== String(currentPoId ?? "")) {
+    if (!ORDERABLE_PR_STATUSES.includes(pr.status)) {
       throw new BadRequest(
-        `PR ${pr.request_no} is already linked to another purchase order.`,
+        `PR ${pr.request_no} is not orderable (must be submitted or partially ordered).`,
       );
     }
   }
@@ -91,8 +99,10 @@ controller.index = async (req, res, next) => {
             { path: "product_id", select: "code name" },
             { path: "uom_id", select: "code name" },
             { path: "supplier_id", select: "code name" },
+            { path: "purchase_request_id", select: "request_no" },
           ],
         })
+        .populate("supplier_id", "code name")
         .select("-is_delete"),
       PurchaseOrderModel.countDocuments(query),
       PurchaseOrderModel.aggregate([
@@ -143,8 +153,10 @@ controller.show = async (req, res, next) => {
           { path: "product_id", select: "code name" },
           { path: "uom_id", select: "code name" },
           { path: "supplier_id", select: "code name" },
+          { path: "purchase_request_id", select: "request_no" },
         ],
       })
+      .populate("supplier_id", "code name")
       .select("-is_delete");
     if (!data) throw new BadRequest("Data not found!");
     res.status(200).json({
@@ -180,77 +192,98 @@ controller.create = async (req, res, next) => {
       }
     }
 
+    const rawItems = Array.isArray(payload.items) ? payload.items : [];
+    if (rawItems.length < 1)
+      throw new BadRequest("At least 1 item is required.");
+
     const result = await runWithOptionalTransaction(async (session) => {
-      const prIds = await validatePurchaseRequests({
-        prIds: payload.pr_ids,
-        session,
-        currentPoId: null,
-      });
+      await validatePurchaseRequests({ prIds: payload.pr_ids, session });
 
-      const order_no = await generateSequenceNo({
-        module: MODULE_NAME,
-        prefix: "PO",
-        date,
-        session,
-      });
-
-      const [doc] = await PurchaseOrderModel.create(
-        [
-          {
-            order_no,
-            date,
-            expected_date: expectedDate,
-            reference: String(payload.reference ?? "").trim(),
-            description: String(payload.description ?? "").trim(),
-            pr_ids: prIds,
-            total_amount: 0,
-          },
-        ],
-        { session },
-      );
-
-      // Item: reuse detail PR (shared doc) + item manual. Menghitung total.
-      const { total } = await syncPurchaseOrderItems({
-        poId: doc._id,
-        payloadItems: payload.items,
-        session,
-      });
-
-      doc.total_amount = total;
-      await doc.save({ session });
-
-      // Tandai PR sumber sebagai "sudah dibuatkan PO".
-      if (prIds.length) {
-        await PurchaseRequestModel.updateMany(
-          { _id: { $in: prIds } },
-          { purchase_order_id: doc._id },
-        ).session(session);
+      // Kelompokkan item per-supplier → satu PO per supplier ("" = tanpa
+      // supplier). Item tanpa supplier tetap boleh dibuatkan PO (supplier null).
+      const groups = new Map();
+      for (const it of rawItems) {
+        const key = it.supplier_id ? String(it.supplier_id) : "";
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(it);
       }
 
-      await LogActionModel.create(
-        [
-          {
-            target_id: doc._id,
-            source: MODULE_NAME,
-            activities: [
-              {
-                type: "CREATE",
-                after: doc.toObject(),
-                created_by: req?.login?.user_id ?? null,
-              },
-            ],
-          },
-        ],
-        { session },
-      );
+      const createdPOs = [];
+      const affectedPrIds = new Set();
 
-      return doc;
+      for (const [supplierKey, groupItems] of groups.entries()) {
+        const order_no = await generateSequenceNo({
+          module: MODULE_NAME,
+          prefix: "PO",
+          date,
+          session,
+        });
+        const supplierId = supplierKey || null;
+
+        const [doc] = await PurchaseOrderModel.create(
+          [
+            {
+              order_no,
+              date,
+              expected_date: expectedDate,
+              reference: String(payload.reference ?? "").trim(),
+              description: String(payload.description ?? "").trim(),
+              supplier_id: supplierId,
+              // PO dibuat sebagai DRAFT dulu; disubmit manual dari daftar
+              // sebelum bisa diterima di GR.
+              status: "DRAFT",
+              pr_ids: [],
+              total_amount: 0,
+              created_by: req?.login?.user_id ?? null,
+            },
+          ],
+          { session },
+        );
+
+        // Tautkan item grup ke PO ini (status item → ORDERED).
+        const { total, prIds } = await linkItemsToPurchaseOrder({
+          poId: doc._id,
+          supplierId,
+          items: groupItems,
+          session,
+        });
+        doc.total_amount = total;
+        doc.pr_ids = prIds;
+        await doc.save({ session });
+        prIds.forEach((id) => affectedPrIds.add(id));
+        createdPOs.push(doc);
+
+        await LogActionModel.create(
+          [
+            {
+              target_id: doc._id,
+              source: MODULE_NAME,
+              activities: [
+                {
+                  type: "CREATE",
+                  after: doc.toObject(),
+                  created_by: req?.login?.user_id ?? null,
+                },
+              ],
+            },
+          ],
+          { session },
+        );
+      }
+
+      // Recompute status PR sumber (ORDERED / PARTIAL_ORDERED) + array PO-nya.
+      await syncParentStatuses({ prIds: [...affectedPrIds], session });
+
+      return createdPOs;
     });
 
     res.status(201).json({
       code: 201,
       success: true,
-      message: "Purchase order created successfully!",
+      message:
+        result.length > 1
+          ? `${result.length} purchase orders created (grouped by supplier)!`
+          : "Purchase order created successfully!",
       data: result,
     });
   } catch (err) {
@@ -280,8 +313,11 @@ controller.update = async (req, res, next) => {
         is_delete: { $ne: true },
       }).session(session);
       if (!doc) throw new BadRequest("Data not found!");
-      if (doc.status === "SUBMITTED") {
-        throw new BadRequest("Submitted purchase order is locked.");
+      // Terkunci hanya bila barang sudah mulai diterima.
+      if (["PARTIAL_RECEIVED", "RECEIVED", "CLOSED"].includes(doc.status)) {
+        throw new BadRequest(
+          "Purchase order already has received goods and cannot be edited.",
+        );
       }
 
       const before = doc.toObject();
@@ -309,33 +345,22 @@ controller.update = async (req, res, next) => {
         doc.description = String(payload.description).trim();
       }
 
-      // Rekonsiliasi tautan PR: lepas flag lama milik PO ini, pasang yang baru.
       if (payload.pr_ids !== undefined) {
-        const newIds = await validatePurchaseRequests({
-          prIds: payload.pr_ids,
-          session,
-          currentPoId: id,
-        });
-        await PurchaseRequestModel.updateMany(
-          { purchase_order_id: id },
-          { purchase_order_id: null },
-        ).session(session);
-        if (newIds.length) {
-          await PurchaseRequestModel.updateMany(
-            { _id: { $in: newIds } },
-            { purchase_order_id: id },
-          ).session(session);
-        }
-        doc.pr_ids = newIds;
+        await validatePurchaseRequests({ prIds: payload.pr_ids, session });
       }
 
+      // Tautan PR (array purchase_order_id) & status PR di-recompute otomatis
+      // dari item lewat syncParentStatuses — tidak lagi di-set manual di sini.
+      let affectedPrIds = [];
       if (payload.items !== undefined) {
-        const { total } = await syncPurchaseOrderItems({
+        const sync = await syncPurchaseOrderItems({
           poId: doc._id,
           payloadItems: payload.items,
           session,
         });
-        doc.total_amount = total;
+        doc.total_amount = sync.total;
+        doc.pr_ids = sync.linkedPrIds;
+        affectedPrIds = sync.affectedPrIds;
       }
 
       if (payload.status !== undefined) {
@@ -345,6 +370,9 @@ controller.update = async (req, res, next) => {
       }
 
       await doc.save({ session });
+
+      // Recompute status + array PO pada PR yang tersentuh.
+      await syncParentStatuses({ prIds: affectedPrIds, session });
 
       await LogActionModel.findOneAndUpdate(
         { target_id: id },
@@ -392,30 +420,51 @@ controller.delete = async (req, res, next) => {
         is_delete: { $ne: true },
       }).session(session);
       if (!doc) throw new BadRequest("Data not found!");
-      if (doc.status === "SUBMITTED") {
-        throw new BadRequest("Submitted purchase order cannot be deleted.");
+      // Tak bisa dihapus bila barang sudah mulai diterima (GR).
+      if (["PARTIAL_RECEIVED", "RECEIVED", "CLOSED"].includes(doc.status)) {
+        throw new BadRequest(
+          "Purchase order already has received goods and cannot be deleted.",
+        );
       }
 
       const before = doc.toObject();
+
+      // PR yang tersentuh (untuk recompute status setelah item dikembalikan).
+      const poItems = await DetailProductItemModel.find({
+        purchase_order_id: doc._id,
+      }).session(session);
+      const affectedPrIds = [
+        ...new Set(
+          poItems
+            .filter((d) => d.purchase_request_id)
+            .map((d) => String(d.purchase_request_id)),
+        ),
+      ];
+
       doc.is_delete = true;
       await doc.save({ session });
 
-      // Lepas flag pada PR sumber.
-      await PurchaseRequestModel.updateMany(
-        { purchase_order_id: id },
-        { purchase_order_id: null },
-      ).session(session);
-
-      // Item dari PR di-detach (kembali jadi milik PR saja); item manual milik
-      // PO dihapus.
+      // Item milik PR dikembalikan ke awal: lepas PO, status PENDING, supplier
+      // null — sehingga masih bisa dibuatkan PO lagi. Item manual milik PO saja
+      // dihapus.
       await DetailProductItemModel.updateMany(
         { purchase_order_id: doc._id, purchase_request_id: { $ne: null } },
-        { purchase_order_id: null },
+        {
+          $set: {
+            purchase_order_id: null,
+            status: "PENDING",
+            supplier_id: null,
+          },
+        },
       ).session(session);
       await DetailProductItemModel.deleteMany({
         purchase_order_id: doc._id,
         purchase_request_id: null,
       }).session(session);
+
+      // Recompute status PR: PARTIAL_ORDERED bila sebagian item masih di PO lain,
+      // atau SUBMITTED bila semua item kembali PENDING.
+      await syncParentStatuses({ prIds: affectedPrIds, session });
 
       await LogActionModel.findOneAndUpdate(
         { target_id: id },

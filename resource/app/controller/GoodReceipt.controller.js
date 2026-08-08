@@ -3,18 +3,35 @@ const { generateSequenceNo } = require("../../helper/sequence");
 const {
   syncGoodReceiptItems,
   reconcileGoodReceiptStock,
+  syncParentStatuses,
 } = require("../../helper/DetailProductItems");
 const BadRequest = require("../../utils/errors/bad-request");
 const LogActionModel = require("../models/LogAction.model");
 const GoodReceiptModel = require("../models/GoodReceipt.model");
 const PurchaseOrderModel = require("../models/PurchaseOrder.model");
 const DetailProductItemModel = require("../models/DetailProductItem.model");
-const PurchaseRequestModel = require("../models/PurchaseRequest.model");
+const ImageModel = require("../models/Image.model");
 
 const controller = {};
 const MODULE_NAME = GoodReceiptModel.collection.collectionName;
 
 const FILTER_STATUSES = ["DRAFT", "PARTIAL", "RECEIVED"];
+
+// Normalisasi daftar id gambar menjadi array string unik (buang null/duplikat).
+const normalizeImageIds = (ids) =>
+  Array.isArray(ids) ? [...new Set(ids.filter(Boolean).map(String))] : [];
+
+// Set flag `status` pada beberapa Image sekaligus (true = dipakai, false =
+// lepas). Aman untuk list kosong (langsung di-skip).
+const setImagesStatus = async (ids, status, session) => {
+  const list = normalizeImageIds(ids);
+  if (list.length === 0) return;
+  await ImageModel.updateMany(
+    { _id: { $in: list } },
+    { status },
+    { session: session ?? null },
+  );
+};
 
 const ITEM_POPULATE = {
   path: "items",
@@ -85,6 +102,7 @@ controller.index = async (req, res, next) => {
         .populate(ITEM_POPULATE)
         .populate("po_ids", "order_no")
         .populate("warehouse_id", "code name")
+        .populate("received_proof_id", "path")
         .select("-is_delete"),
       GoodReceiptModel.countDocuments(query),
       GoodReceiptModel.aggregate([
@@ -131,6 +149,7 @@ controller.show = async (req, res, next) => {
       .populate(ITEM_POPULATE)
       .populate("po_ids", "order_no")
       .populate("warehouse_id", "code name")
+      .populate("received_proof_id", "path")
       .select("-is_delete");
     if (!data) throw new BadRequest("Data not found!");
     res.status(200).json({
@@ -166,6 +185,7 @@ controller.create = async (req, res, next) => {
       }
     }
     const mode = String(payload.warehouse_mode || "SINGLE").toUpperCase();
+    const proofIds = normalizeImageIds(payload.received_proof_id);
 
     const result = await runWithOptionalTransaction(async (session) => {
       const poIds = await validatePurchaseOrders(payload.po_ids, session);
@@ -189,25 +209,40 @@ controller.create = async (req, res, next) => {
             warehouse_id: mode === "SINGLE" ? payload.warehouse_id : null,
             warehouse_mode: mode,
             total_amount: 0,
+            received_proof_id: proofIds,
+            created_by: req?.login?.user_id ?? null,
           },
         ],
         { session },
       );
 
-      // Reuse detail PO (shared doc) — set good_receipt_id/received_qty/warehouse.
-      const { total, status } = await syncGoodReceiptItems({
-        grId: doc._id,
-        payloadItems: payload.items,
-        mode,
-        headerWarehouse: payload.warehouse_id,
-        session,
-      });
+      // Tandai gambar bukti terpilih sebagai dipakai (status = true).
+      await setImagesStatus(proofIds, true, session);
+
+      // Reuse detail PO (shared doc) — set good_receipt_id/received_qty/warehouse
+      // + status item (PARTIAL_RECEIVED / RECEIVED).
+      const { total, status, affectedPoIds, affectedPrIds } =
+        await syncGoodReceiptItems({
+          grId: doc._id,
+          payloadItems: payload.items,
+          mode,
+          headerWarehouse: payload.warehouse_id,
+          session,
+        });
       doc.total_amount = total;
       doc.status = status;
       await doc.save({ session });
 
       // received_qty -> stok (position + movement) direkonsiliasi.
       await reconcileGoodReceiptStock({ grId: doc._id, session });
+
+      // Recompute status PO & PR dari status item: penuh → CLOSED, sebagian →
+      // PARTIAL_RECEIVED.
+      await syncParentStatuses({
+        poIds: affectedPoIds,
+        prIds: affectedPrIds,
+        session,
+      });
 
       await LogActionModel.create(
         [
@@ -230,38 +265,8 @@ controller.create = async (req, res, next) => {
         .populate(ITEM_POPULATE)
         .populate("po_ids", "order_no")
         .populate("warehouse_id", "code name")
+        .populate("received_proof_id", "path")
         .session(session);
-
-      if (newData.status === "RECEIVED") {
-        const detailIds = await DetailProductItemModel.find({
-          good_receipt_id: newData._id,
-          is_delete: { $new },
-        }).session(session);
-
-        const dataPO = new Set(
-          detailIds
-            .filter((item) => item.purchase_order_id !== null)
-            .map((item) => item.purchase_order_id),
-        );
-        const dataPR = new Set(
-          detailIds
-            .filter((item) => item.purchase_request_id !== null)
-            .map((item) => item.purchase_request_id),
-        );
-
-        await Promise.all([
-          PurchaseOrderModel.updateMany(
-            { _id: { $in: dataPO } },
-            { status: "CLOSED" },
-            { session },
-          ),
-          PurchaseRequestModel.updateMany(
-            { _id: { $in: dataPR } },
-            { status: "CLOSED" },
-            { session },
-          ),
-        ]);
-      }
 
       return newData;
     });
@@ -333,6 +338,16 @@ controller.update = async (req, res, next) => {
       if (payload.warehouse_id !== undefined) {
         doc.warehouse_id = payload.warehouse_id || null;
       }
+      if (payload.received_proof_id !== undefined) {
+        const prev = normalizeImageIds(doc.received_proof_id);
+        const next = normalizeImageIds(payload.received_proof_id);
+        const removed = prev.filter((id) => !next.includes(id));
+        const added = next.filter((id) => !prev.includes(id));
+        // Gambar yang tidak lagi dipilih -> status false; yang baru -> true.
+        await setImagesStatus(removed, false, session);
+        await setImagesStatus(added, true, session);
+        doc.received_proof_id = next;
+      }
 
       // Bangun ulang item (reuse PO) + stok + status bila item/warehouse/mode berubah.
       if (
@@ -361,16 +376,23 @@ controller.update = async (req, res, next) => {
             warehouse_id: d.warehouse_id,
           }));
         }
-        const { total, status } = await syncGoodReceiptItems({
-          grId: doc._id,
-          payloadItems,
-          mode: doc.warehouse_mode,
-          headerWarehouse: doc.warehouse_id,
-          session,
-        });
+        const { total, status, affectedPoIds, affectedPrIds } =
+          await syncGoodReceiptItems({
+            grId: doc._id,
+            payloadItems,
+            mode: doc.warehouse_mode,
+            headerWarehouse: doc.warehouse_id,
+            session,
+          });
         doc.total_amount = total;
         doc.status = status;
         await reconcileGoodReceiptStock({ grId: doc._id, session });
+        // Recompute status PO & PR dari status item.
+        await syncParentStatuses({
+          poIds: affectedPoIds,
+          prIds: affectedPrIds,
+          session,
+        });
       }
 
       await doc.save({ session });
@@ -395,6 +417,7 @@ controller.update = async (req, res, next) => {
         .populate(ITEM_POPULATE)
         .populate("po_ids", "order_no")
         .populate("warehouse_id", "code name")
+        .populate("received_proof_id", "path")
         .session(session);
     });
 
@@ -430,16 +453,41 @@ controller.delete = async (req, res, next) => {
       doc.is_delete = true;
       await doc.save({ session });
 
-      // Item milik PO/PR di-detach (dikembalikan); item GR-only dihapus.
+      // Lepas semua gambar bukti (status = false) saat GR dihapus.
+      await setImagesStatus(doc.received_proof_id, false, session);
+
+      // Kumpulkan PO/PR terdampak sebelum item di-detach.
+      const grItems = await DetailProductItemModel.find({
+        good_receipt_id: doc._id,
+      }).session(session);
+      const affectedPoIds = [
+        ...new Set(
+          grItems
+            .filter((d) => d.purchase_order_id)
+            .map((d) => String(d.purchase_order_id)),
+        ),
+      ];
+      const affectedPrIds = [
+        ...new Set(
+          grItems
+            .filter((d) => d.purchase_request_id)
+            .map((d) => String(d.purchase_request_id)),
+        ),
+      ];
+
+      // Item milik PO -> kembali ORDERED; item PR-only -> PENDING; item GR-only
+      // dihapus. received_qty di-reset agar status induk turun kembali.
+      await DetailProductItemModel.updateMany(
+        { good_receipt_id: doc._id, purchase_order_id: { $ne: null } },
+        { $set: { good_receipt_id: null, received_qty: 0, status: "ORDERED" } },
+      ).session(session);
       await DetailProductItemModel.updateMany(
         {
           good_receipt_id: doc._id,
-          $or: [
-            { purchase_order_id: { $ne: null } },
-            { purchase_request_id: { $ne: null } },
-          ],
+          purchase_order_id: null,
+          purchase_request_id: { $ne: null },
         },
-        { $set: { good_receipt_id: null, received_qty: 0 } },
+        { $set: { good_receipt_id: null, received_qty: 0, status: "PENDING" } },
       ).session(session);
       await DetailProductItemModel.deleteMany({
         good_receipt_id: doc._id,
@@ -449,6 +497,13 @@ controller.delete = async (req, res, next) => {
 
       // Kembalikan stok (reverse movement GR).
       await reconcileGoodReceiptStock({ grId: doc._id, session });
+
+      // Recompute status PO & PR setelah item dikembalikan.
+      await syncParentStatuses({
+        poIds: affectedPoIds,
+        prIds: affectedPrIds,
+        session,
+      });
 
       await LogActionModel.findOneAndUpdate(
         { target_id: id },
