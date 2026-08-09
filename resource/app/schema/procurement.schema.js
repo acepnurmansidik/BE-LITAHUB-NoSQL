@@ -56,6 +56,21 @@ const ProcurementSchema = {
       },
     ],
   },
+  BodyDeliveryOrderSchema: {
+    date: "2026-08-01",
+    delivery_date: "2026-08-01",
+    recipient: "Gudang Pusat",
+    reference: "REF-2026-0001",
+    description: "",
+    warehouse_id: "000000000000000000000000",
+    items: [
+      {
+        product_id: "000000000000000000000000",
+        uom_id: "000000000000000000000000",
+        quantity: 10,
+      },
+    ],
+  },
 };
 
 module.exports = ProcurementSchema;

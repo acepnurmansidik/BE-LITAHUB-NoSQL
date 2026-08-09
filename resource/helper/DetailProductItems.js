@@ -3,6 +3,7 @@ const DetailProductItemModel = require("../app/models/DetailProductItem.model");
 const StockMovementModel = require("../app/models/StockMovement.model");
 const StockPositionModel = require("../app/models/StockPosition.model");
 const GoodReceiptModel = require("../app/models/GoodReceipt.model");
+const DeliveryOrderModel = require("../app/models/DeliveryOrder.model");
 const BadRequest = require("../utils/errors/bad-request");
 const PurchaseOrderModel = require("../app/models/PurchaseOrder.model");
 const PurchaseRequestModel = require("../app/models/PurchaseRequest.model");
@@ -14,6 +15,7 @@ const PARENT_FIELDS = [
   "purchase_request_id",
   "purchase_order_id",
   "good_receipt_id",
+  "delivery_order_id",
 ];
 
 // ============================================================
@@ -640,6 +642,95 @@ const reconcileGoodReceiptStock = async ({ grId, session }) => {
   // controller setelah sync + reconcile.
 };
 
+// ============================================================
+// STOCK (Delivery Order) — balikkan (reverse) seluruh movement OUT milik DO ini
+// pada stock position lalu hapus movement-nya. Dipakai saat update (sebelum
+// re-apply) & saat delete. Stok gudang bertambah kembali sebesar qty movement.
+// ============================================================
+const releaseDeliveryOrderStock = async ({ doId, session }) => {
+  const oldMoves = await StockMovementModel.find({
+    delivery_order_id: doId,
+  }).session(session);
+  for (const mv of oldMoves) {
+    // Movement OUT dulu mengurangi stok sebesar qty → kembalikan (+qty).
+    await StockPositionModel.updateOne(
+      { product_id: mv.product_id, warehouse_id: mv.warehouse_id },
+      { $inc: { quantity: Number(mv.quantity) || 0 } },
+      { session },
+    );
+  }
+  if (oldMoves.length) {
+    await StockMovementModel.deleteMany({ delivery_order_id: doId }).session(
+      session,
+    );
+  }
+};
+
+// ============================================================
+// STOCK (Delivery Order) — rekonsiliasi idempoten pengeluaran barang sebuah DO:
+//  1. Reverse movement OUT lama DO ini (via releaseDeliveryOrderStock),
+//  2. Validasi stok tersedia di gudang sumber cukup untuk SEMUA item (kalau
+//     kurang → throw, tidak ada pengurangan parsial),
+//  3. Buat movement OUT baru per item & kurangi stock position.
+// Stok berkurang sejak DO dibuat (status PENDING) — tidak menunggu dikirim.
+// ============================================================
+const reconcileDeliveryOrderStock = async ({ doId, session }) => {
+  await releaseDeliveryOrderStock({ doId, session });
+
+  const [items, deliveryOrder] = await Promise.all([
+    DetailProductItemModel.find({
+      delivery_order_id: doId,
+      is_delete: { $ne: true },
+    }).session(session),
+    DeliveryOrderModel.findById(doId).session(session),
+  ]);
+  if (!deliveryOrder) throw new BadRequest("Delivery order not found.");
+  const warehouseId = deliveryOrder.warehouse_id;
+  if (!warehouseId) throw new BadRequest("Source warehouse is required.");
+
+  // Validasi stok tersedia lebih dulu untuk seluruh item.
+  for (const it of items) {
+    const qty = Number(it.quantity) || 0;
+    if (qty <= 0) continue;
+    const pos = await StockPositionModel.findOne({
+      product_id: it.product_id,
+      warehouse_id: warehouseId,
+    }).session(session);
+    const available = pos ? Number(pos.quantity) || 0 : 0;
+    if (available < qty) {
+      throw new BadRequest(
+        `Insufficient stock for ${it.product_name || "product"}: available ${available}, need ${qty}.`,
+      );
+    }
+  }
+
+  const moves = [];
+  for (const it of items) {
+    const qty = Number(it.quantity) || 0;
+    if (qty <= 0) continue;
+    await StockPositionModel.updateOne(
+      { product_id: it.product_id, warehouse_id: warehouseId },
+      { $inc: { quantity: -qty } },
+      { session },
+    );
+    moves.push({
+      product_id: it.product_id,
+      warehouse_id: warehouseId,
+      uom_id: it.uom_id || null,
+      delivery_order_id: doId,
+      type: "OUT",
+      quantity: qty,
+      reference: deliveryOrder.delivery_no,
+      date: deliveryOrder.delivery_date || deliveryOrder.date || new Date(),
+      note: "Delivery order",
+      status: "APPROVED",
+    });
+  }
+  if (moves.length) {
+    await StockMovementModel.insertMany(moves, { session, ordered: true });
+  }
+};
+
 // Opsi populate item standar (product/uom/supplier/warehouse ringkas).
 
 module.exports = {
@@ -655,4 +746,6 @@ module.exports = {
   syncGoodReceiptItems,
   deriveGoodReceiptStatus,
   reconcileGoodReceiptStock,
+  reconcileDeliveryOrderStock,
+  releaseDeliveryOrderStock,
 };

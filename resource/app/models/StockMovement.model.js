@@ -29,6 +29,12 @@ const StockMovementSchema = new mongoose.Schema(
       ref: "GoodReceipt",
       default: null,
     },
+    // Referensi Delivery Order — terisi bila movement berasal dari pengiriman DO.
+    delivery_order_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "DeliveryOrder",
+      default: null,
+    },
     type: {
       type: String,
       enum: ["IN", "OUT", "ADJUSTMENT", "TRANSFER"],

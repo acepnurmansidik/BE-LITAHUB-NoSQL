@@ -45,6 +45,12 @@ const DetailProductItemSchema = new Schema(
       ref: "GoodReceipt",
       default: null,
     },
+    // Parent Delivery Order (dokumen standalone — tidak berelasi ke PR/PO/GR).
+    delivery_order_id: {
+      type: Schema.Types.ObjectId,
+      ref: "DeliveryOrder",
+      default: null,
+    },
 
     // Gudang penerimaan (khusus item Good Receipt).
     warehouse_id: {

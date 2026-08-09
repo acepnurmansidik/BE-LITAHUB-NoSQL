@@ -1,0 +1,12 @@
+const controller = require("../controller/DeliveryOrder.controller");
+
+const router = require("express").Router();
+
+router.get("/", controller.index);
+router.get("/:id", controller.show);
+router.post("/", controller.create);
+router.put("/:id/ship", controller.ship);
+router.put("/:id", controller.update);
+router.delete("/:id", controller.delete);
+
+module.exports = router;

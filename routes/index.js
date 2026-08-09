@@ -31,6 +31,7 @@ const departmentRouter = require("../resource/app/router/department.routes");
 const purchaseRequestRouter = require("../resource/app/router/purchaseRequest.routes");
 const purchaseOrderRouter = require("../resource/app/router/purchaseOrder.routes");
 const goodReceiptRouter = require("../resource/app/router/goodReceipt.routes");
+const deliveryOrderRouter = require("../resource/app/router/deliveryOrder.routes");
 const uploadRouter = require("../resource/app/router/upload.routes");
 
 router.use("/app-configs", appConfigRouter);
@@ -72,6 +73,7 @@ router.use("/stock-movement", stockMovementRouter);
 router.use("/purchase-request", purchaseRequestRouter);
 router.use("/purchase-order", purchaseOrderRouter);
 router.use("/good-receipt", goodReceiptRouter);
+router.use("/delivery-order", deliveryOrderRouter);
 
 // UTILITY
 router.use("/upload", uploadRouter);
