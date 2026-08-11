@@ -148,13 +148,17 @@ controller.Login = async (req, res, next) => {
       name: isAvailable.data.username,
     });
 
+    const path_access = users.role_id?.path_access ?? [];
+    delete users.role_id?.path_access;
+
     res.status(200).json({
       status: true,
       message: "Login success!",
       data: {
         ...users,
+        email,
         token,
-        path_access: users.role_id?.path_access ?? [],
+        path_access,
       },
     });
   } catch (err) {
