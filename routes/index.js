@@ -33,6 +33,7 @@ const purchaseOrderRouter = require("../resource/app/router/purchaseOrder.routes
 const goodReceiptRouter = require("../resource/app/router/goodReceipt.routes");
 const deliveryOrderRouter = require("../resource/app/router/deliveryOrder.routes");
 const uploadRouter = require("../resource/app/router/upload.routes");
+const exportImportRouter = require("../resource/app/router/exportImportFile.routes");
 
 router.use("/app-configs", appConfigRouter);
 router.use("/auth", authRouter);
@@ -77,6 +78,7 @@ router.use("/delivery-order", deliveryOrderRouter);
 
 // UTILITY
 router.use("/upload", uploadRouter);
+router.use("/import-export", exportImportRouter);
 
 router.use(AuthorizeUserLogin);
 
