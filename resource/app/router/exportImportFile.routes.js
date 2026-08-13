@@ -47,6 +47,33 @@ router.post(
   controller.importStockMovement,
 );
 
+// IMPORT — finance modules (line-based upsert by entry_no; COA by code).
+router.post(
+  "/journal-entry/import",
+  upload.single("file"),
+  controller.importJournalEntry,
+);
+router.post(
+  "/journal-write-off/import",
+  upload.single("file"),
+  controller.importJournalWriteOff,
+);
+router.post(
+  "/account-receivable/import",
+  upload.single("file"),
+  controller.importAccountReceivable,
+);
+router.post(
+  "/account-payable/import",
+  upload.single("file"),
+  controller.importAccountPayable,
+);
+router.post(
+  "/chart-of-account/import",
+  upload.single("file"),
+  controller.importChartOfAccount,
+);
+
 // EXPORT — master, stock, & procurement.
 router.get("/product/export", controller.exportProduct);
 router.get("/product-category/export", controller.exportProductCategory);
@@ -59,5 +86,12 @@ router.get("/purchase-request/export", controller.exportPurchaseRequest);
 router.get("/purchase-order/export", controller.exportPurchaseOrder);
 router.get("/good-receipt/export", controller.exportGoodReceipt);
 router.get("/delivery-order/export", controller.exportDeliveryOrder);
+
+// EXPORT — finance.
+router.get("/journal-entry/export", controller.exportJournalEntry);
+router.get("/journal-write-off/export", controller.exportJournalWriteOff);
+router.get("/account-receivable/export", controller.exportAccountReceivable);
+router.get("/account-payable/export", controller.exportAccountPayable);
+router.get("/chart-of-account/export", controller.exportChartOfAccount);
 
 module.exports = router;

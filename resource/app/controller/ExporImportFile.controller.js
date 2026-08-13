@@ -29,6 +29,11 @@ const PurchaseRequestModel = require("../models/PurchaseRequest.model");
 const PurchaseOrderModel = require("../models/PurchaseOrder.model");
 const GoodReceiptModel = require("../models/GoodReceipt.model");
 const DeliveryOrderModel = require("../models/DeliveryOrder.model");
+const JournalEntryModel = require("../models/JournalEntry.model");
+const JournalWriteOffModel = require("../models/JournalWriteOff.model");
+const AccountReceivableModel = require("../models/AccountReceivable.model");
+const AccountPayableModel = require("../models/AccountPayable.model");
+const ChartOfAccountModel = require("../models/ChartOfAccount.model");
 
 const controller = {};
 
@@ -44,6 +49,7 @@ const num = (v) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 };
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 const bool = (v, def = true) => {
   const s = norm(v).toLowerCase();
   if (s === "") return def;
@@ -181,6 +187,40 @@ const codeIndex = async (Model, field = "code") => {
 // Read a populated ref field safely (returns "" when the ref is missing).
 const refField = (ref, field) =>
   ref && typeof ref === "object" ? (ref[field] ?? "") : "";
+
+// Build a Map of COA code(upper) -> { _id, code, name, is_header } used to
+// resolve account lines during finance imports.
+const accountByCode = async () => {
+  const docs = await ChartOfAccountModel.find({ is_delete: { $ne: true } })
+    .select("_id code name is_header")
+    .lean();
+  const m = new Map();
+  for (const d of docs) m.set(upper(d.code), d);
+  return m;
+};
+
+// Group merged finance rows into records. In the exported/template layout a
+// document spans several rows (one per account line) with its header columns
+// vertically merged — so only the FIRST row of each document carries entry_no.
+// A row with a non-empty entry_no starts a new record (its header is read
+// once); every row that carries an account code contributes one line. This is
+// how a field shaped as an array (the account lines) is expanded back into a
+// single document on import.
+const groupLinedRows = (rows, readHeader, readLine) => {
+  const records = [];
+  let current = null;
+  for (const row of rows) {
+    const entryNo = norm(pick(row, "entry_no", "no", "number"));
+    if (entryNo) {
+      current = { entry_no: entryNo, header: readHeader(row), lines: [] };
+      records.push(current);
+    }
+    if (!current) continue; // stray line before any header row — ignore
+    const line = readLine(row);
+    if (line) current.lines.push(line);
+  }
+  return records;
+};
 
 // Run the bulkWrite and summarise the result. Every import handler builds its
 // own `ops`/`errors` inline and passes them here for the actual write.
@@ -702,6 +742,559 @@ controller.importStockMovement = async (req, res, next) => {
   }
 };
 
+controller.importJournalEntry = async (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Import Journal Entry from Excel (.xlsx)'
+    #swagger.description = 'Import & upsert Journal Entry by entry_no. Each document spans several rows (one per account line, header columns merged). Lines resolve account_code against the Chart of Account (must be postable), totals are recomputed and the entry must be balanced (total debit == total credit).'
+    #swagger.consumes = ['multipart/form-data']
+    #swagger.parameters['file'] = { in: 'formData', type: 'file', required: true, description: 'Excel .xlsx file' }
+  */
+  try {
+    const rows = parseRows(req.file);
+    const coa = await accountByCode();
+    const STATUSES = ["DRAFT", "POSTED"];
+
+    const records = groupLinedRows(
+      rows,
+      (row) => ({
+        date: parseDateTime(pick(row, "date", "tanggal")) || new Date(),
+        description: norm(pick(row, "description", "keterangan")),
+        reference: norm(pick(row, "reference", "ref")),
+        status: STATUSES.includes(upper(pick(row, "status")))
+          ? upper(pick(row, "status"))
+          : "DRAFT",
+      }),
+      (row) => {
+        const code = upper(pick(row, "account_code", "account", "kode_akun"));
+        if (!code) return null;
+        return {
+          code,
+          description: norm(
+            pick(row, "account_description", "line_description", "deskripsi"),
+          ),
+          debit: num(pick(row, "debit")),
+          credit: num(pick(row, "credit")),
+        };
+      },
+    );
+
+    const ops = [];
+    const errors = [];
+    records.forEach((rec) => {
+      if (rec.lines.length < 2) {
+        errors.push(`${rec.entry_no}: journal must have at least 2 lines.`);
+        return;
+      }
+      let totalDebit = 0;
+      let totalCredit = 0;
+      const lines = [];
+      let bad = null;
+      for (const ln of rec.lines) {
+        const acc = coa.get(ln.code);
+        if (!acc) {
+          bad = `account '${ln.code}' not found`;
+          break;
+        }
+        if (acc.is_header) {
+          bad = `account '${ln.code}' is a header (not postable)`;
+          break;
+        }
+        const debit = round2(ln.debit);
+        const credit = round2(ln.credit);
+        if (debit > 0 && credit > 0) {
+          bad = `line ${ln.code}: fill debit OR credit, not both`;
+          break;
+        }
+        if (debit === 0 && credit === 0) {
+          bad = `line ${ln.code}: debit or credit is required`;
+          break;
+        }
+        totalDebit += debit;
+        totalCredit += credit;
+        lines.push({
+          account_id: acc._id,
+          account_code: acc.code,
+          account_name: acc.name,
+          description: ln.description,
+          debit,
+          credit,
+        });
+      }
+      if (bad) {
+        errors.push(`${rec.entry_no}: ${bad}.`);
+        return;
+      }
+      totalDebit = round2(totalDebit);
+      totalCredit = round2(totalCredit);
+      if (totalDebit !== totalCredit) {
+        errors.push(
+          `${rec.entry_no}: not balanced (debit ${totalDebit} != credit ${totalCredit}).`,
+        );
+        return;
+      }
+      if (totalDebit === 0) {
+        errors.push(`${rec.entry_no}: total cannot be zero.`);
+        return;
+      }
+      ops.push({
+        updateOne: {
+          filter: { entry_no: rec.entry_no },
+          update: {
+            $set: {
+              date: rec.header.date,
+              description: rec.header.description,
+              reference: rec.header.reference,
+              status: rec.header.status,
+              lines,
+              total_debit: totalDebit,
+              total_credit: totalCredit,
+            },
+            $setOnInsert: { entry_no: rec.entry_no },
+          },
+          upsert: true,
+        },
+      });
+    });
+
+    const summary = await runBulk(JournalEntryModel, ops, errors);
+    res.status(200).json({
+      success: true,
+      message: `Import 'journal-entry' finished: ${summary.inserted} created, ${summary.updated} updated, ${summary.skipped} skipped.`,
+      data: summary,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+controller.importJournalWriteOff = async (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Import Journal Write-Off from Excel (.xlsx)'
+    #swagger.description = 'Import & upsert Journal Write-Off by entry_no. Same double-entry rules as Journal Entry (balanced debit/credit, postable accounts) plus write_off_type / source_type.'
+    #swagger.consumes = ['multipart/form-data']
+    #swagger.parameters['file'] = { in: 'formData', type: 'file', required: true, description: 'Excel .xlsx file' }
+  */
+  try {
+    const rows = parseRows(req.file);
+    const coa = await accountByCode();
+    const STATUSES = ["DRAFT", "POSTED"];
+    const WRITE_OFF_TYPES = ["RECEIVABLE", "PAYABLE", "INVENTORY", "OTHER"];
+    const SOURCE_TYPES = [
+      "NONE",
+      "JOURNAL_ENTRY",
+      "ACCOUNT_RECEIVABLE",
+      "ACCOUNT_PAYABLE",
+    ];
+
+    const records = groupLinedRows(
+      rows,
+      (row) => ({
+        date: parseDateTime(pick(row, "date", "tanggal")) || new Date(),
+        write_off_type: WRITE_OFF_TYPES.includes(
+          upper(pick(row, "write_off_type", "type", "tipe")),
+        )
+          ? upper(pick(row, "write_off_type", "type", "tipe"))
+          : "OTHER",
+        reference: norm(pick(row, "reference", "ref")),
+        description: norm(pick(row, "description", "keterangan")),
+        source_type: SOURCE_TYPES.includes(upper(pick(row, "source_type")))
+          ? upper(pick(row, "source_type"))
+          : "NONE",
+        source_no: norm(pick(row, "source_no", "source")),
+        status: STATUSES.includes(upper(pick(row, "status")))
+          ? upper(pick(row, "status"))
+          : "DRAFT",
+      }),
+      (row) => {
+        const code = upper(pick(row, "account_code", "account", "kode_akun"));
+        if (!code) return null;
+        return {
+          code,
+          description: norm(
+            pick(row, "account_description", "line_description", "deskripsi"),
+          ),
+          debit: num(pick(row, "debit")),
+          credit: num(pick(row, "credit")),
+        };
+      },
+    );
+
+    const ops = [];
+    const errors = [];
+    records.forEach((rec) => {
+      if (rec.lines.length < 2) {
+        errors.push(`${rec.entry_no}: write-off must have at least 2 lines.`);
+        return;
+      }
+      let totalDebit = 0;
+      let totalCredit = 0;
+      const lines = [];
+      let bad = null;
+      for (const ln of rec.lines) {
+        const acc = coa.get(ln.code);
+        if (!acc) {
+          bad = `account '${ln.code}' not found`;
+          break;
+        }
+        if (acc.is_header) {
+          bad = `account '${ln.code}' is a header (not postable)`;
+          break;
+        }
+        const debit = round2(ln.debit);
+        const credit = round2(ln.credit);
+        if (debit > 0 && credit > 0) {
+          bad = `line ${ln.code}: fill debit OR credit, not both`;
+          break;
+        }
+        if (debit === 0 && credit === 0) {
+          bad = `line ${ln.code}: debit or credit is required`;
+          break;
+        }
+        totalDebit += debit;
+        totalCredit += credit;
+        lines.push({
+          account_id: acc._id,
+          account_code: acc.code,
+          account_name: acc.name,
+          description: ln.description,
+          debit,
+          credit,
+        });
+      }
+      if (bad) {
+        errors.push(`${rec.entry_no}: ${bad}.`);
+        return;
+      }
+      totalDebit = round2(totalDebit);
+      totalCredit = round2(totalCredit);
+      if (totalDebit !== totalCredit) {
+        errors.push(
+          `${rec.entry_no}: not balanced (debit ${totalDebit} != credit ${totalCredit}).`,
+        );
+        return;
+      }
+      if (totalDebit === 0) {
+        errors.push(`${rec.entry_no}: total cannot be zero.`);
+        return;
+      }
+      ops.push({
+        updateOne: {
+          filter: { entry_no: rec.entry_no },
+          update: {
+            $set: {
+              date: rec.header.date,
+              write_off_type: rec.header.write_off_type,
+              reference: rec.header.reference,
+              description: rec.header.description,
+              source_type: rec.header.source_type,
+              source_no: rec.header.source_no,
+              status: rec.header.status,
+              lines,
+              total_debit: totalDebit,
+              total_credit: totalCredit,
+            },
+            $setOnInsert: { entry_no: rec.entry_no },
+          },
+          upsert: true,
+        },
+      });
+    });
+
+    const summary = await runBulk(JournalWriteOffModel, ops, errors);
+    res.status(200).json({
+      success: true,
+      message: `Import 'journal-write-off' finished: ${summary.inserted} created, ${summary.updated} updated, ${summary.skipped} skipped.`,
+      data: summary,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Shared body for AR & AP import (identical shape: lines carry `amount`). The
+// two endpoints below stay separate functions and only pass their own Model +
+// label so each endpoint remains one self-contained function.
+const importPartyLedger = async (req, res, next, Model, moduleLabel) => {
+  const rows = parseRows(req.file);
+  const coa = await accountByCode();
+  const STATUSES = ["DRAFT", "OPEN", "PARTIAL", "PAID", "WRITE_OFF"];
+
+  const records = groupLinedRows(
+    rows,
+    (row) => ({
+      date: parseDateTime(pick(row, "date", "tanggal")) || new Date(),
+      due_date: parseDateTime(pick(row, "due_date", "jatuh_tempo")),
+      party_name: norm(
+        pick(row, "party_name", "party", "customer", "vendor", "pihak"),
+      ),
+      reference: norm(pick(row, "reference", "ref")),
+      description: norm(pick(row, "description", "keterangan")),
+      status: STATUSES.includes(upper(pick(row, "status")))
+        ? upper(pick(row, "status"))
+        : "DRAFT",
+      paid_amount: num(pick(row, "paid_amount", "dibayar")),
+    }),
+    (row) => {
+      const code = upper(pick(row, "account_code", "account", "kode_akun"));
+      if (!code) return null;
+      return {
+        code,
+        description: norm(
+          pick(row, "account_description", "line_description", "deskripsi"),
+        ),
+        amount: num(pick(row, "amount", "nominal")),
+      };
+    },
+  );
+
+  const ops = [];
+  const errors = [];
+  records.forEach((rec) => {
+    if (rec.lines.length < 1) {
+      errors.push(`${rec.entry_no}: at least 1 account line is required.`);
+      return;
+    }
+    let totalAmount = 0;
+    const lines = [];
+    let bad = null;
+    for (const ln of rec.lines) {
+      const acc = coa.get(ln.code);
+      if (!acc) {
+        bad = `account '${ln.code}' not found`;
+        break;
+      }
+      if (acc.is_header) {
+        bad = `account '${ln.code}' is a header (not postable)`;
+        break;
+      }
+      const amount = round2(ln.amount);
+      if (amount < 0) {
+        bad = `line ${ln.code}: amount cannot be negative`;
+        break;
+      }
+      totalAmount += amount;
+      lines.push({
+        account_id: acc._id,
+        account_code: acc.code,
+        account_name: acc.name,
+        description: ln.description,
+        amount,
+      });
+    }
+    if (bad) {
+      errors.push(`${rec.entry_no}: ${bad}.`);
+      return;
+    }
+    totalAmount = round2(totalAmount);
+    if (totalAmount <= 0) {
+      errors.push(`${rec.entry_no}: total amount must be greater than zero.`);
+      return;
+    }
+    const paidAmount = round2(rec.header.paid_amount);
+    const totalRemaining = round2(Math.max(totalAmount - paidAmount, 0));
+    ops.push({
+      updateOne: {
+        filter: { entry_no: rec.entry_no },
+        update: {
+          $set: {
+            date: rec.header.date,
+            due_date: rec.header.due_date,
+            party_name: rec.header.party_name,
+            reference: rec.header.reference,
+            description: rec.header.description,
+            status: rec.header.status,
+            lines,
+            total_amount: totalAmount,
+            paid_amount: paidAmount,
+            total_remaining: totalRemaining,
+          },
+          $setOnInsert: { entry_no: rec.entry_no },
+        },
+        upsert: true,
+      },
+    });
+  });
+
+  const summary = await runBulk(Model, ops, errors);
+  res.status(200).json({
+    success: true,
+    message: `Import '${moduleLabel}' finished: ${summary.inserted} created, ${summary.updated} updated, ${summary.skipped} skipped.`,
+    data: summary,
+  });
+};
+
+controller.importAccountReceivable = async (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Import Account Receivable from Excel (.xlsx)'
+    #swagger.description = 'Import & upsert Account Receivable by entry_no. Lines resolve account_code (postable) + amount; total_amount / total_remaining are recomputed.'
+    #swagger.consumes = ['multipart/form-data']
+    #swagger.parameters['file'] = { in: 'formData', type: 'file', required: true, description: 'Excel .xlsx file' }
+  */
+  try {
+    await importPartyLedger(
+      req,
+      res,
+      next,
+      AccountReceivableModel,
+      "account-receivable",
+    );
+  } catch (err) {
+    next(err);
+  }
+};
+
+controller.importAccountPayable = async (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Import Account Payable from Excel (.xlsx)'
+    #swagger.description = 'Import & upsert Account Payable by entry_no. Lines resolve account_code (postable) + amount; total_amount / total_remaining are recomputed.'
+    #swagger.consumes = ['multipart/form-data']
+    #swagger.parameters['file'] = { in: 'formData', type: 'file', required: true, description: 'Excel .xlsx file' }
+  */
+  try {
+    await importPartyLedger(
+      req,
+      res,
+      next,
+      AccountPayableModel,
+      "account-payable",
+    );
+  } catch (err) {
+    next(err);
+  }
+};
+
+controller.importChartOfAccount = async (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Import Chart of Account from Excel (.xlsx)'
+    #swagger.description = 'Import & upsert Chart of Account by code. `code` is the materialized path (e.g. 1000.1100.1110); level, path, parent_id and normal_balance are derived from the code + type. Rows are processed parents-first.'
+    #swagger.consumes = ['multipart/form-data']
+    #swagger.parameters['file'] = { in: 'formData', type: 'file', required: true, description: 'Excel .xlsx file' }
+  */
+  try {
+    const rows = parseRows(req.file);
+    const ACCOUNT_TYPES = [
+      "ASSET",
+      "LIABILITY",
+      "EQUITY",
+      "REVENUE",
+      "EXPENSE",
+      "CAPITAL",
+      "SALES",
+      "COGS",
+      "OTHER_INCOME_EXPENSE",
+      "ADM_OPERATION_EXPENSE",
+      "DEPRECIATION_AMORTIZATION",
+      "OTHERS",
+    ];
+    const NORMAL_BALANCE_BY_TYPE = {
+      ASSET: "DEBIT",
+      LIABILITY: "CREDIT",
+      EQUITY: "CREDIT",
+      REVENUE: "CREDIT",
+      EXPENSE: "DEBIT",
+      CAPITAL: "CREDIT",
+      SALES: "CREDIT",
+      COGS: "DEBIT",
+      OTHER_INCOME_EXPENSE: "CREDIT",
+      ADM_OPERATION_EXPENSE: "DEBIT",
+      DEPRECIATION_AMORTIZATION: "DEBIT",
+      OTHERS: "DEBIT",
+    };
+
+    const items = [];
+    const errors = [];
+    const seen = new Set();
+    rows.forEach((row, i) => {
+      const line = i + 2;
+      const code = norm(pick(row, "code", "kode")); // full materialized path
+      const name = norm(pick(row, "name", "nama"));
+      if (!code || !name) {
+        errors.push(`Row ${line}: code & name are required.`);
+        return;
+      }
+      if (seen.has(upper(code))) return;
+      seen.add(upper(code));
+      const type = ACCOUNT_TYPES.includes(upper(pick(row, "type", "tipe")))
+        ? upper(pick(row, "type", "tipe"))
+        : "OTHERS";
+      items.push({
+        code,
+        name,
+        type,
+        is_header: bool(pick(row, "is_header", "header"), false),
+        description: norm(pick(row, "description", "deskripsi")),
+      });
+    });
+
+    // Process parents before children so parent_id can resolve within one file.
+    items.sort(
+      (a, b) =>
+        a.code.split(".").length - b.code.split(".").length ||
+        a.code.localeCompare(b.code),
+    );
+
+    // Seed the code -> _id map with the accounts already in the database.
+    const idByCode = new Map();
+    const existing = await ChartOfAccountModel.find({ is_delete: { $ne: true } })
+      .select("_id code")
+      .lean();
+    for (const e of existing) idByCode.set(upper(e.code), e._id);
+
+    let inserted = 0;
+    let updated = 0;
+    for (const it of items) {
+      const segments = it.code.split(".");
+      const level = segments.length;
+      const path = it.code;
+      const parentPath = segments.slice(0, -1).join(".");
+      const parent_id = parentPath
+        ? idByCode.get(upper(parentPath)) || null
+        : null;
+      const existedBefore = idByCode.has(upper(it.code));
+      const doc = await ChartOfAccountModel.findOneAndUpdate(
+        { code: it.code },
+        {
+          $set: {
+            name: it.name,
+            type: it.type,
+            normal_balance: NORMAL_BALANCE_BY_TYPE[it.type] || "DEBIT",
+            is_header: it.is_header,
+            parent_id,
+            level,
+            path,
+            description: it.description,
+          },
+          $setOnInsert: { code: it.code },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true },
+      );
+      idByCode.set(upper(it.code), doc._id);
+      if (existedBefore) updated += 1;
+      else inserted += 1;
+    }
+
+    const summary = {
+      total_rows: items.length + errors.length,
+      inserted,
+      updated,
+      skipped: errors.length,
+      errors: errors.slice(0, 50),
+    };
+    res.status(200).json({
+      success: true,
+      message: `Import 'chart-of-account' finished: ${summary.inserted} created, ${summary.updated} updated, ${summary.skipped} skipped.`,
+      data: summary,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ============================================================
 // EXPORT handlers — one endpoint = one self-contained function. Each builds its
 // own query + populate + row map, then applies the shared created_at filter.
@@ -1132,6 +1725,244 @@ controller.exportDeliveryOrder = async (req, res, next) => {
         recipient: d.recipient,
         warehouse: refField(d.warehouse_id, "name"),
         status: d.status,
+        created_at: d.created_at,
+      }),
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Data retrieved successfully!",
+      data,
+      page_size: data.length,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---- FINANCE exports. Line-based modules keep their account lines as an
+// `accounts` array so the frontend can expand them into rows and vertically
+// merge the header columns. Chart of Account is flat (no account array).
+
+controller.exportJournalEntry = async (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Export Journal Entry as JSON rows'
+    #swagger.description = 'Return Journal Entry documents filtered by created_at. Each row keeps its `accounts` array (account_code, account_name, account_description, debit, credit) so the frontend can merge the header cells across the account rows. Date fields returned as DD/MM/YYYY (created_at as DD/MM/YYYY HH:mm).'
+    #swagger.parameters['range'] = { in: 'query', type: 'string', description: '7d | 1m | 1y' }
+    #swagger.parameters['start_date'] = { in: 'query', type: 'string', description: 'ISO date (custom range start)' }
+    #swagger.parameters['end_date'] = { in: 'query', type: 'string', description: 'ISO date (custom range end)' }
+  */
+  try {
+    const query = JournalEntryModel.find({ is_delete: { $ne: true } });
+    const docs = await applyDateFilter(query, req)
+      .sort({ created_at: -1 })
+      .lean();
+
+    const data = docs.map((d) =>
+      formatRowDates({
+        entry_no: d.entry_no,
+        date: d.date,
+        description: d.description,
+        reference: d.reference,
+        status: d.status,
+        total_debit: d.total_debit,
+        total_credit: d.total_credit,
+        accounts: (d.lines || []).map((ln) => ({
+          account_code: ln.account_code,
+          account_name: ln.account_name,
+          account_description: ln.description,
+          debit: ln.debit,
+          credit: ln.credit,
+        })),
+        created_at: d.created_at,
+      }),
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Data retrieved successfully!",
+      data,
+      page_size: data.length,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+controller.exportJournalWriteOff = async (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Export Journal Write-Off as JSON rows'
+    #swagger.description = 'Return Journal Write-Off documents filtered by created_at. Keeps the `accounts` array (debit/credit) for header-cell merging. Date fields DD/MM/YYYY (created_at DD/MM/YYYY HH:mm).'
+    #swagger.parameters['range'] = { in: 'query', type: 'string', description: '7d | 1m | 1y' }
+    #swagger.parameters['start_date'] = { in: 'query', type: 'string', description: 'ISO date (custom range start)' }
+    #swagger.parameters['end_date'] = { in: 'query', type: 'string', description: 'ISO date (custom range end)' }
+  */
+  try {
+    const query = JournalWriteOffModel.find({ is_delete: { $ne: true } });
+    const docs = await applyDateFilter(query, req)
+      .sort({ created_at: -1 })
+      .lean();
+
+    const data = docs.map((d) =>
+      formatRowDates({
+        entry_no: d.entry_no,
+        date: d.date,
+        write_off_type: d.write_off_type,
+        reference: d.reference,
+        description: d.description,
+        source_type: d.source_type,
+        source_no: d.source_no,
+        status: d.status,
+        total_debit: d.total_debit,
+        total_credit: d.total_credit,
+        accounts: (d.lines || []).map((ln) => ({
+          account_code: ln.account_code,
+          account_name: ln.account_name,
+          account_description: ln.description,
+          debit: ln.debit,
+          credit: ln.credit,
+        })),
+        created_at: d.created_at,
+      }),
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Data retrieved successfully!",
+      data,
+      page_size: data.length,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+controller.exportAccountReceivable = async (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Export Account Receivable as JSON rows'
+    #swagger.description = 'Return Account Receivable documents filtered by created_at. Keeps the `accounts` array (amount) for header-cell merging. Date fields DD/MM/YYYY (created_at DD/MM/YYYY HH:mm).'
+    #swagger.parameters['range'] = { in: 'query', type: 'string', description: '7d | 1m | 1y' }
+    #swagger.parameters['start_date'] = { in: 'query', type: 'string', description: 'ISO date (custom range start)' }
+    #swagger.parameters['end_date'] = { in: 'query', type: 'string', description: 'ISO date (custom range end)' }
+  */
+  try {
+    const query = AccountReceivableModel.find({ is_delete: { $ne: true } });
+    const docs = await applyDateFilter(query, req)
+      .sort({ created_at: -1 })
+      .lean();
+
+    const data = docs.map((d) =>
+      formatRowDates({
+        entry_no: d.entry_no,
+        date: d.date,
+        due_date: d.due_date,
+        party_name: d.party_name,
+        reference: d.reference,
+        description: d.description,
+        status: d.status,
+        total_amount: d.total_amount,
+        paid_amount: d.paid_amount,
+        total_remaining: d.total_remaining,
+        accounts: (d.lines || []).map((ln) => ({
+          account_code: ln.account_code,
+          account_name: ln.account_name,
+          account_description: ln.description,
+          amount: ln.amount,
+        })),
+        created_at: d.created_at,
+      }),
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Data retrieved successfully!",
+      data,
+      page_size: data.length,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+controller.exportAccountPayable = async (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Export Account Payable as JSON rows'
+    #swagger.description = 'Return Account Payable documents filtered by created_at. Keeps the `accounts` array (amount) for header-cell merging. Date fields DD/MM/YYYY (created_at DD/MM/YYYY HH:mm).'
+    #swagger.parameters['range'] = { in: 'query', type: 'string', description: '7d | 1m | 1y' }
+    #swagger.parameters['start_date'] = { in: 'query', type: 'string', description: 'ISO date (custom range start)' }
+    #swagger.parameters['end_date'] = { in: 'query', type: 'string', description: 'ISO date (custom range end)' }
+  */
+  try {
+    const query = AccountPayableModel.find({ is_delete: { $ne: true } });
+    const docs = await applyDateFilter(query, req)
+      .sort({ created_at: -1 })
+      .lean();
+
+    const data = docs.map((d) =>
+      formatRowDates({
+        entry_no: d.entry_no,
+        date: d.date,
+        due_date: d.due_date,
+        party_name: d.party_name,
+        reference: d.reference,
+        description: d.description,
+        status: d.status,
+        total_amount: d.total_amount,
+        paid_amount: d.paid_amount,
+        total_remaining: d.total_remaining,
+        accounts: (d.lines || []).map((ln) => ({
+          account_code: ln.account_code,
+          account_name: ln.account_name,
+          account_description: ln.description,
+          amount: ln.amount,
+        })),
+        created_at: d.created_at,
+      }),
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Data retrieved successfully!",
+      data,
+      page_size: data.length,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+controller.exportChartOfAccount = async (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Export Chart of Account as JSON rows'
+    #swagger.description = 'Return flattened Chart of Account rows filtered by created_at (no account array). `code` is the materialized path; parent_code is the parent account code. Date fields DD/MM/YYYY (created_at DD/MM/YYYY HH:mm).'
+    #swagger.parameters['range'] = { in: 'query', type: 'string', description: '7d | 1m | 1y' }
+    #swagger.parameters['start_date'] = { in: 'query', type: 'string', description: 'ISO date (custom range start)' }
+    #swagger.parameters['end_date'] = { in: 'query', type: 'string', description: 'ISO date (custom range end)' }
+  */
+  try {
+    const query = ChartOfAccountModel.find({ is_delete: { $ne: true } }).populate(
+      "parent_id",
+      "code name",
+    );
+    const docs = await applyDateFilter(query, req)
+      .sort({ created_at: -1 })
+      .lean();
+
+    const data = docs.map((d) =>
+      formatRowDates({
+        code: d.code,
+        name: d.name,
+        type: d.type,
+        normal_balance: d.normal_balance,
+        is_header: d.is_header,
+        parent_code: refField(d.parent_id, "code"),
+        level: d.level,
+        description: d.description,
         created_at: d.created_at,
       }),
     );
