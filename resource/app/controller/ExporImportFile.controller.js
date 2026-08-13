@@ -34,6 +34,7 @@ const JournalWriteOffModel = require("../models/JournalWriteOff.model");
 const AccountReceivableModel = require("../models/AccountReceivable.model");
 const AccountPayableModel = require("../models/AccountPayable.model");
 const ChartOfAccountModel = require("../models/ChartOfAccount.model");
+const DetailProductItemModel = require("../models/DetailProductItem.model");
 
 const controller = {};
 
@@ -206,13 +207,19 @@ const accountByCode = async () => {
 // once); every row that carries an account code contributes one line. This is
 // how a field shaped as an array (the account lines) is expanded back into a
 // single document on import.
-const groupLinedRows = (rows, readHeader, readLine) => {
+const groupLinedRows = (
+  rows,
+  readHeader,
+  readLine,
+  keyKeys = ["entry_no", "no", "number"],
+) => {
   const records = [];
   let current = null;
   for (const row of rows) {
-    const entryNo = norm(pick(row, "entry_no", "no", "number"));
-    if (entryNo) {
-      current = { entry_no: entryNo, header: readHeader(row), lines: [] };
+    const keyVal = norm(pick(row, ...keyKeys));
+    if (keyVal) {
+      // `entry_no` kept as an alias so finance importers keep working.
+      current = { key: keyVal, entry_no: keyVal, header: readHeader(row), lines: [] };
       records.push(current);
     }
     if (!current) continue; // stray line before any header row — ignore
@@ -220,6 +227,39 @@ const groupLinedRows = (rows, readHeader, readLine) => {
     if (line) current.lines.push(line);
   }
   return records;
+};
+
+// Build a Map of Product code(upper) -> { _id, code, name } used to resolve &
+// snapshot procurement item lines on import.
+const productByCode = async () => {
+  const docs = await ProductModel.find({ is_delete: { $ne: true } })
+    .select("_id code name")
+    .lean();
+  const m = new Map();
+  for (const d of docs) m.set(upper(d.code), d);
+  return m;
+};
+
+// Fetch the detail items of a set of procurement documents (from the shared
+// `detail_product_items` collection) and group them by their parent id, so an
+// export can attach each document's item lines as an `items` array.
+const itemsByParent = async (parentField, ids) => {
+  const items = await DetailProductItemModel.find({
+    [parentField]: { $in: ids },
+    is_delete: { $ne: true },
+  })
+    .populate("uom_id", "code")
+    .populate("supplier_id", "code name")
+    .populate("warehouse_id", "code name")
+    .sort({ created_at: 1 })
+    .lean();
+  const map = new Map();
+  for (const it of items) {
+    const key = String(it[parentField]);
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(it);
+  }
+  return map;
 };
 
 // Run the bulkWrite and summarise the result. Every import handler builds its
@@ -1295,6 +1335,313 @@ controller.importChartOfAccount = async (req, res, next) => {
   }
 };
 
+// Valid item lifecycle statuses (detail_product_items.status).
+const ITEM_STATUSES = ["PENDING", "ORDERED", "PARTIAL_RECEIVED", "RECEIVED"];
+const itemStatusOr = (row, def) => {
+  const s = upper(pick(row, "item_status"));
+  return ITEM_STATUSES.includes(s) ? s : def;
+};
+
+// Shared body for procurement imports (PR / PO / GR / DO). Every document spans
+// several rows (one per product item, header columns merged). Products resolve
+// against the master (snapshotting code/name); uom / supplier / warehouse
+// resolve to their _id. A document is upserted by its number and its detail
+// items in `detail_product_items` are fully replaced.
+const importProcurement = async (req, res, opts) => {
+  const {
+    Model,
+    parentField,
+    moduleLabel,
+    keyKeys,
+    noField,
+    readHeader,
+    buildItem,
+    computeTotal,
+  } = opts;
+
+  const rows = parseRows(req.file);
+  const [products, uomByCode, supByCode, whByCode] = await Promise.all([
+    productByCode(),
+    codeIndex(UomModel, "code"),
+    codeIndex(SupplierModel, "code"),
+    codeIndex(WarehouseModel, "code"),
+  ]);
+  const resolvers = { uomByCode, supByCode, whByCode };
+
+  const records = groupLinedRows(
+    rows,
+    (row) => readHeader(row, resolvers),
+    (row) => {
+      const product_code = upper(
+        pick(row, "product_code", "product", "kode_produk"),
+      );
+      if (!product_code) return null;
+      return { row, product_code };
+    },
+    keyKeys,
+  );
+
+  let inserted = 0;
+  let updated = 0;
+  const errors = [];
+  for (const rec of records) {
+    if (!rec.lines.length) {
+      errors.push(`${rec.key}: at least 1 item is required.`);
+      continue;
+    }
+    const items = [];
+    let total = 0;
+    let bad = null;
+    for (const ln of rec.lines) {
+      const prod = products.get(ln.product_code);
+      if (!prod) {
+        bad = `product '${ln.product_code}' not found`;
+        break;
+      }
+      const item = buildItem(ln.row, prod, resolvers, rec.header);
+      total += Number(item.subtotal) || 0;
+      items.push(item);
+    }
+    if (bad) {
+      errors.push(`${rec.key}: ${bad}.`);
+      continue;
+    }
+
+    const header = { ...rec.header };
+    if (computeTotal) header.total_amount = round2(total);
+    const existedBefore = await Model.exists({ [noField]: rec.key });
+    const doc = await Model.findOneAndUpdate(
+      { [noField]: rec.key },
+      { $set: header, $setOnInsert: { [noField]: rec.key } },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+    await DetailProductItemModel.deleteMany({ [parentField]: doc._id });
+    await DetailProductItemModel.insertMany(
+      items.map((it) => ({ ...it, [parentField]: doc._id })),
+    );
+    if (existedBefore) updated += 1;
+    else inserted += 1;
+  }
+
+  const summary = {
+    total_rows: records.length,
+    inserted,
+    updated,
+    skipped: errors.length,
+    errors: errors.slice(0, 50),
+  };
+  res.status(200).json({
+    success: true,
+    message: `Import '${moduleLabel}' finished: ${summary.inserted} created, ${summary.updated} updated, ${summary.skipped} skipped.`,
+    data: summary,
+  });
+};
+
+controller.importPurchaseRequest = (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Import Purchase Request from Excel (.xlsx)'
+    #swagger.description = 'Import & upsert Purchase Request by request_no. Each document spans several rows (one per item, header columns merged). Items resolve product_code against the master; total_amount is recomputed.'
+    #swagger.consumes = ['multipart/form-data']
+    #swagger.parameters['file'] = { in: 'formData', type: 'file', required: true, description: 'Excel .xlsx file' }
+  */
+  const PR_STATUS = [
+    "DRAFT",
+    "SUBMITTED",
+    "APPROVED",
+    "PARTIAL_ORDERED",
+    "ORDERED",
+    "PARTIAL_RECEIVED",
+    "RECEIVED",
+    "CLOSED",
+  ];
+  importProcurement(req, res, {
+    Model: PurchaseRequestModel,
+    parentField: "purchase_request_id",
+    moduleLabel: "purchase-request",
+    keyKeys: ["request_no", "no", "number"],
+    noField: "request_no",
+    computeTotal: true,
+    readHeader: (row) => ({
+      date: parseDateTime(pick(row, "date", "tanggal")) || new Date(),
+      needed_date: parseDateTime(pick(row, "needed_date")),
+      requested_by: norm(pick(row, "requested_by")),
+      reference: norm(pick(row, "reference", "ref")),
+      description: norm(pick(row, "description", "keterangan")),
+      status: PR_STATUS.includes(upper(pick(row, "status")))
+        ? upper(pick(row, "status"))
+        : "DRAFT",
+    }),
+    buildItem: (row, prod, { uomByCode, supByCode }) => {
+      const quantity = num(pick(row, "quantity", "qty"));
+      const price = num(pick(row, "price", "harga"));
+      return {
+        product_id: prod._id,
+        product_code: prod.code,
+        product_name: prod.name,
+        uom_id: uomByCode.get(upper(pick(row, "uom", "unit"))) || null,
+        supplier_id: supByCode.get(upper(pick(row, "supplier"))) || null,
+        quantity,
+        price,
+        subtotal: round2(quantity * price),
+        status: itemStatusOr(row, "PENDING"),
+      };
+    },
+  }).catch(next);
+};
+
+controller.importPurchaseOrder = (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Import Purchase Order from Excel (.xlsx)'
+    #swagger.description = 'Import & upsert Purchase Order by order_no. Header supplier + items (product_code resolved) with recomputed total_amount.'
+    #swagger.consumes = ['multipart/form-data']
+    #swagger.parameters['file'] = { in: 'formData', type: 'file', required: true, description: 'Excel .xlsx file' }
+  */
+  const PO_STATUS = [
+    "DRAFT",
+    "SUBMITTED",
+    "APPROVED",
+    "PARTIAL_RECEIVED",
+    "RECEIVED",
+    "CLOSED",
+  ];
+  importProcurement(req, res, {
+    Model: PurchaseOrderModel,
+    parentField: "purchase_order_id",
+    moduleLabel: "purchase-order",
+    keyKeys: ["order_no", "no", "number"],
+    noField: "order_no",
+    computeTotal: true,
+    readHeader: (row, { supByCode }) => ({
+      date: parseDateTime(pick(row, "date", "tanggal")) || new Date(),
+      expected_date: parseDateTime(pick(row, "expected_date")),
+      supplier_id: supByCode.get(upper(pick(row, "supplier"))) || null,
+      reference: norm(pick(row, "reference", "ref")),
+      description: norm(pick(row, "description", "keterangan")),
+      status: PO_STATUS.includes(upper(pick(row, "status")))
+        ? upper(pick(row, "status"))
+        : "DRAFT",
+    }),
+    buildItem: (row, prod, { uomByCode, supByCode }, header) => {
+      const quantity = num(pick(row, "quantity", "qty"));
+      const price = num(pick(row, "price", "harga"));
+      return {
+        product_id: prod._id,
+        product_code: prod.code,
+        product_name: prod.name,
+        uom_id: uomByCode.get(upper(pick(row, "uom", "unit"))) || null,
+        supplier_id:
+          supByCode.get(upper(pick(row, "supplier"))) ||
+          header.supplier_id ||
+          null,
+        quantity,
+        price,
+        subtotal: round2(quantity * price),
+        status: itemStatusOr(row, "ORDERED"),
+      };
+    },
+  }).catch(next);
+};
+
+controller.importGoodReceipt = (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Import Good Receipt from Excel (.xlsx)'
+    #swagger.description = 'Import & upsert Good Receipt by receipt_no. Items resolve product_code + per-item warehouse (item_warehouse) with received_qty; total_amount recomputed. Note: this does NOT post stock movements.'
+    #swagger.consumes = ['multipart/form-data']
+    #swagger.parameters['file'] = { in: 'formData', type: 'file', required: true, description: 'Excel .xlsx file' }
+  */
+  const GR_STATUS = ["DRAFT", "PARTIAL", "RECEIVED"];
+  importProcurement(req, res, {
+    Model: GoodReceiptModel,
+    parentField: "good_receipt_id",
+    moduleLabel: "good-receipt",
+    keyKeys: ["receipt_no", "no", "number"],
+    noField: "receipt_no",
+    computeTotal: true,
+    readHeader: (row, { whByCode }) => ({
+      date: parseDateTime(pick(row, "date", "tanggal")) || new Date(),
+      received_date: parseDateTime(pick(row, "received_date")),
+      warehouse_id: whByCode.get(upper(pick(row, "warehouse"))) || null,
+      warehouse_mode: ["SINGLE", "MULTIPLE"].includes(
+        upper(pick(row, "warehouse_mode")),
+      )
+        ? upper(pick(row, "warehouse_mode"))
+        : "SINGLE",
+      reference: norm(pick(row, "reference", "ref")),
+      description: norm(pick(row, "description", "keterangan")),
+      status: GR_STATUS.includes(upper(pick(row, "status")))
+        ? upper(pick(row, "status"))
+        : "DRAFT",
+    }),
+    buildItem: (row, prod, { uomByCode, whByCode }, header) => {
+      const quantity = num(pick(row, "quantity", "qty"));
+      const received_qty = num(pick(row, "received_qty", "received"));
+      const price = num(pick(row, "price", "harga"));
+      return {
+        product_id: prod._id,
+        product_code: prod.code,
+        product_name: prod.name,
+        uom_id: uomByCode.get(upper(pick(row, "uom", "unit"))) || null,
+        warehouse_id:
+          whByCode.get(upper(pick(row, "item_warehouse", "warehouse"))) ||
+          header.warehouse_id ||
+          null,
+        quantity,
+        received_qty,
+        price,
+        subtotal: round2(quantity * price),
+        status: itemStatusOr(row, "RECEIVED"),
+      };
+    },
+  }).catch(next);
+};
+
+controller.importDeliveryOrder = (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Import Delivery Order from Excel (.xlsx)'
+    #swagger.description = 'Import & upsert Delivery Order by delivery_no. Items resolve product_code + quantity. Note: this does NOT ship or reduce stock.'
+    #swagger.consumes = ['multipart/form-data']
+    #swagger.parameters['file'] = { in: 'formData', type: 'file', required: true, description: 'Excel .xlsx file' }
+  */
+  const DO_STATUS = ["PENDING", "SHIPPED"];
+  importProcurement(req, res, {
+    Model: DeliveryOrderModel,
+    parentField: "delivery_order_id",
+    moduleLabel: "delivery-order",
+    keyKeys: ["delivery_no", "no", "number"],
+    noField: "delivery_no",
+    computeTotal: false,
+    readHeader: (row, { whByCode }) => ({
+      date: parseDateTime(pick(row, "date", "tanggal")) || new Date(),
+      delivery_date: parseDateTime(pick(row, "delivery_date")),
+      recipient: norm(pick(row, "recipient")),
+      warehouse_id: whByCode.get(upper(pick(row, "warehouse"))) || null,
+      reference: norm(pick(row, "reference", "ref")),
+      description: norm(pick(row, "description", "keterangan")),
+      status: DO_STATUS.includes(upper(pick(row, "status")))
+        ? upper(pick(row, "status"))
+        : "PENDING",
+    }),
+    buildItem: (row, prod, { uomByCode }) => {
+      const quantity = num(pick(row, "quantity", "qty"));
+      const price = num(pick(row, "price", "harga"));
+      return {
+        product_id: prod._id,
+        product_code: prod.code,
+        product_name: prod.name,
+        uom_id: uomByCode.get(upper(pick(row, "uom", "unit"))) || null,
+        quantity,
+        price,
+        subtotal: round2(quantity * price),
+        status: itemStatusOr(row, "PENDING"),
+      };
+    },
+  }).catch(next);
+};
+
 // ============================================================
 // EXPORT handlers — one endpoint = one self-contained function. Each builds its
 // own query + populate + row map, then applies the shared created_at filter.
@@ -1595,14 +1942,30 @@ controller.exportPurchaseRequest = async (req, res, next) => {
     const docs = await applyDateFilter(query, req)
       .sort({ created_at: -1 })
       .lean();
+    const byParent = await itemsByParent(
+      "purchase_request_id",
+      docs.map((d) => d._id),
+    );
 
     const data = docs.map((d) =>
       formatRowDates({
         request_no: d.request_no,
         date: d.date,
         needed_date: d.needed_date,
+        requested_by: d.requested_by,
+        reference: d.reference,
+        description: d.description,
         status: d.status,
         total_amount: d.total_amount,
+        items: (byParent.get(String(d._id)) || []).map((it) => ({
+          product_code: it.product_code,
+          product_name: it.product_name,
+          uom: refField(it.uom_id, "code"),
+          quantity: it.quantity,
+          price: it.price,
+          subtotal: it.subtotal,
+          item_status: it.status,
+        })),
         created_at: d.created_at,
       }),
     );
@@ -1635,15 +1998,30 @@ controller.exportPurchaseOrder = async (req, res, next) => {
     const docs = await applyDateFilter(query, req)
       .sort({ created_at: -1 })
       .lean();
+    const byParent = await itemsByParent(
+      "purchase_order_id",
+      docs.map((d) => d._id),
+    );
 
     const data = docs.map((d) =>
       formatRowDates({
         order_no: d.order_no,
         date: d.date,
         expected_date: d.expected_date,
-        supplier: refField(d.supplier_id, "name"),
+        supplier: refField(d.supplier_id, "code"),
+        reference: d.reference,
+        description: d.description,
         status: d.status,
         total_amount: d.total_amount,
+        items: (byParent.get(String(d._id)) || []).map((it) => ({
+          product_code: it.product_code,
+          product_name: it.product_name,
+          uom: refField(it.uom_id, "code"),
+          quantity: it.quantity,
+          price: it.price,
+          subtotal: it.subtotal,
+          item_status: it.status,
+        })),
         created_at: d.created_at,
       }),
     );
@@ -1676,14 +2054,33 @@ controller.exportGoodReceipt = async (req, res, next) => {
     const docs = await applyDateFilter(query, req)
       .sort({ created_at: -1 })
       .lean();
+    const byParent = await itemsByParent(
+      "good_receipt_id",
+      docs.map((d) => d._id),
+    );
 
     const data = docs.map((d) =>
       formatRowDates({
         receipt_no: d.receipt_no,
         date: d.date,
-        warehouse: refField(d.warehouse_id, "name"),
+        received_date: d.received_date,
+        warehouse: refField(d.warehouse_id, "code"),
+        warehouse_mode: d.warehouse_mode,
+        reference: d.reference,
+        description: d.description,
         status: d.status,
         total_amount: d.total_amount,
+        items: (byParent.get(String(d._id)) || []).map((it) => ({
+          product_code: it.product_code,
+          product_name: it.product_name,
+          uom: refField(it.uom_id, "code"),
+          item_warehouse: refField(it.warehouse_id, "code"),
+          quantity: it.quantity,
+          received_qty: it.received_qty,
+          price: it.price,
+          subtotal: it.subtotal,
+          item_status: it.status,
+        })),
         created_at: d.created_at,
       }),
     );
@@ -1716,6 +2113,10 @@ controller.exportDeliveryOrder = async (req, res, next) => {
     const docs = await applyDateFilter(query, req)
       .sort({ created_at: -1 })
       .lean();
+    const byParent = await itemsByParent(
+      "delivery_order_id",
+      docs.map((d) => d._id),
+    );
 
     const data = docs.map((d) =>
       formatRowDates({
@@ -1723,8 +2124,19 @@ controller.exportDeliveryOrder = async (req, res, next) => {
         date: d.date,
         delivery_date: d.delivery_date,
         recipient: d.recipient,
-        warehouse: refField(d.warehouse_id, "name"),
+        warehouse: refField(d.warehouse_id, "code"),
+        reference: d.reference,
+        description: d.description,
         status: d.status,
+        items: (byParent.get(String(d._id)) || []).map((it) => ({
+          product_code: it.product_code,
+          product_name: it.product_name,
+          uom: refField(it.uom_id, "code"),
+          quantity: it.quantity,
+          price: it.price,
+          subtotal: it.subtotal,
+          item_status: it.status,
+        })),
         created_at: d.created_at,
       }),
     );

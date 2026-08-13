@@ -47,6 +47,28 @@ router.post(
   controller.importStockMovement,
 );
 
+// IMPORT — procurement modules (item lines upsert by document number).
+router.post(
+  "/purchase-request/import",
+  upload.single("file"),
+  controller.importPurchaseRequest,
+);
+router.post(
+  "/purchase-order/import",
+  upload.single("file"),
+  controller.importPurchaseOrder,
+);
+router.post(
+  "/good-receipt/import",
+  upload.single("file"),
+  controller.importGoodReceipt,
+);
+router.post(
+  "/delivery-order/import",
+  upload.single("file"),
+  controller.importDeliveryOrder,
+);
+
 // IMPORT — finance modules (line-based upsert by entry_no; COA by code).
 router.post(
   "/journal-entry/import",
