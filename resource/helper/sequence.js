@@ -12,7 +12,7 @@ const generateSequenceNo = async ({
   prefix,
   date,
   session,
-  pad = 5,
+  pad = 4,
 }) => {
   const d = date instanceof Date ? date : new Date(date);
   const year = d.getFullYear();

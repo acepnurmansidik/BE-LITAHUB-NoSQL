@@ -52,8 +52,7 @@ controller.index = async (req, res, next) => {
           populate: [
             {
               path: "product_id",
-              select: "code name supplier_id",
-              populate: { path: "supplier_id", select: "code name" },
+              select: "code name",
             },
             { path: "uom_id", select: "code name" },
             { path: "supplier_id", select: "code name" },

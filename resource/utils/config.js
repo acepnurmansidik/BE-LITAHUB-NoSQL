@@ -26,6 +26,12 @@ const ENV = {
     password: process.env.PASSWORD_EMAIL,
     secure: process.env.SECURE_EMAIL,
   },
+  ttl: {
+    thirtyMinute: process.env.THIRTY_MINUTE,
+    oneHour: process.env.ONE_HOUR,
+    oneDay: process.env.ONE_DAY,
+    oneWeek: process.env.ONE_WEEK,
+  },
 };
 
 module.exports = ENV;

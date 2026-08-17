@@ -10,6 +10,52 @@ const PurchaseRequestModel = require("../app/models/PurchaseRequest.model");
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
+// Tentukan harga asal & harga baru sebuah baris item.
+//  - price     : harga asal (mengikuti master saat item dibuat),
+//  - new_price : harga hasil edit user; bila tidak dikirim = price.
+// Bila new_price != price berarti user meng-update harga.
+const resolveItemPrice = (raw, index = 0) => {
+  const price = round2(raw.price);
+  if (price < 0) {
+    throw new BadRequest(`Item ${index + 1}: price cannot be negative.`);
+  }
+  const hasNew =
+    raw.new_price !== undefined &&
+    raw.new_price !== null &&
+    raw.new_price !== "";
+  const new_price = hasNew ? round2(raw.new_price) : price;
+  if (new_price < 0) {
+    throw new BadRequest(`Item ${index + 1}: new price cannot be negative.`);
+  }
+  return { price, new_price };
+};
+
+// Terapkan perubahan harga master product (purchase_price) dari sebuah Map
+// productId -> newPrice.
+const applyProductPriceUpdates = async (updates, session) => {
+  if (!updates || updates.size === 0) return;
+  for (const [productId, newPrice] of updates.entries()) {
+    await ProductModel.updateOne(
+      { _id: productId },
+      { $set: { purchase_price: newPrice } },
+    ).session(session ?? null);
+  }
+};
+
+// Propagasi harga baru ke master product berdasarkan _id sebuah detail item
+// (dipakai saat edit harga baris reuse PR di PO).
+const propagatePriceByDetailId = async (detailId, newPrice, session) => {
+  const doc = await DetailProductItemModel.findById(detailId)
+    .select("product_id")
+    .session(session ?? null);
+  if (doc && doc.product_id) {
+    await ProductModel.updateOne(
+      { _id: doc.product_id },
+      { $set: { purchase_price: newPrice } },
+    ).session(session ?? null);
+  }
+};
+
 // Valid parent fields — tiap baris item hanya menempel ke satu parent.
 const PARENT_FIELDS = [
   "purchase_request_id",
@@ -146,6 +192,10 @@ const buildDetailProductItems = async (rawItems, session, opts = {}) => {
   const byId = new Map(products.map((p) => [String(p._id), p]));
 
   let total = 0;
+  // Perubahan harga master (product.purchase_price) yang perlu di-apply karena
+  // user meng-edit harga item (new_price != price).
+  const priceUpdates = new Map(); // productId -> newPrice (last wins)
+
   const items = rawItems.map((raw, index) => {
     const prod = raw.product_id ? byId.get(String(raw.product_id)) : null;
     if (!prod) throw new BadRequest(`Item ${index + 1}: product not found.`);
@@ -156,12 +206,16 @@ const buildDetailProductItems = async (rawItems, session, opts = {}) => {
         `Item ${index + 1}: quantity must be greater than 0.`,
       );
     }
-    const price = round2(raw.price);
-    if (price < 0) {
-      throw new BadRequest(`Item ${index + 1}: price cannot be negative.`);
+    // `price`     = harga asal (mengikuti master product saat item dibuat),
+    // `new_price` = harga yang di-edit user. Bila berbeda -> harga master
+    // product ikut diperbarui, dan harga item yang DISIMPAN adalah new_price.
+    const { price, new_price } = resolveItemPrice(raw, index);
+    if (new_price !== price) {
+      priceUpdates.set(String(prod._id), new_price);
     }
+    const storedPrice = new_price; // saat sama, new_price === price
     const received_qty = Math.max(round2(raw.received_qty), 0);
-    const subtotal = round2(quantity * price);
+    const subtotal = round2(quantity * storedPrice);
     total += subtotal;
 
     return {
@@ -174,10 +228,14 @@ const buildDetailProductItems = async (rawItems, session, opts = {}) => {
       warehouse_id: raw.warehouse_id || null,
       quantity,
       received_qty,
-      price,
+      price: storedPrice,
+      new_price,
       subtotal,
     };
   });
+
+  // Propagasi harga baru ke master product (purchase_price).
+  await applyProductPriceUpdates(priceUpdates, session);
 
   return { items, total: round2(total) };
 };
@@ -283,12 +341,15 @@ const syncPurchaseOrderItems = async ({ poId, payloadItems, session }) => {
     const set = { purchase_order_id: poId, status: "ORDERED" };
     if (edit) {
       const q = round2(edit.quantity);
-      const p = round2(edit.price);
+      const { price, new_price } = resolveItemPrice(edit);
       set.quantity = q;
-      set.price = p;
-      set.subtotal = round2(q * p);
+      set.price = new_price; // harga tersimpan = new_price bila di-edit
+      set.new_price = new_price;
+      set.subtotal = round2(q * new_price);
       if (edit.uom_id) set.uom_id = edit.uom_id;
       set.supplier_id = edit.supplier_id || null;
+      // Harga di-edit -> perbarui master product (purchase_price).
+      if (new_price !== price) await propagatePriceByDetailId(id, new_price, s);
     }
     await DetailProductItemModel.updateOne({ _id: id }, { $set: set }).session(
       s,
@@ -359,13 +420,16 @@ const linkItemsToPurchaseOrder = async ({
       };
       if (single) {
         const q = round2(l.quantity);
-        const p = round2(l.price);
+        const { price, new_price } = resolveItemPrice(l);
         if (q > 0) {
           set.quantity = q;
-          set.subtotal = round2(q * p);
+          set.subtotal = round2(q * new_price);
         }
-        set.price = p;
+        set.price = new_price; // harga tersimpan = new_price bila di-edit
+        set.new_price = new_price;
         if (l.uom_id) set.uom_id = l.uom_id;
+        // Harga di-edit -> perbarui master product (purchase_price).
+        if (new_price !== price) await propagatePriceByDetailId(id, new_price, s);
       }
       await DetailProductItemModel.updateOne(
         { _id: id },

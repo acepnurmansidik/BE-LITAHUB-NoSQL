@@ -96,6 +96,13 @@ router.post(
   controller.importChartOfAccount,
 );
 
+// IMPORT — supplier pricing (upsert by name + supplier).
+router.post(
+  "/supplier-pricing/import",
+  upload.single("file"),
+  controller.importSupplierPricing,
+);
+
 // EXPORT — master, stock, & procurement.
 router.get("/product/export", controller.exportProduct);
 router.get("/product-category/export", controller.exportProductCategory);
@@ -115,5 +122,8 @@ router.get("/journal-write-off/export", controller.exportJournalWriteOff);
 router.get("/account-receivable/export", controller.exportAccountReceivable);
 router.get("/account-payable/export", controller.exportAccountPayable);
 router.get("/chart-of-account/export", controller.exportChartOfAccount);
+
+// EXPORT — supplier pricing.
+router.get("/supplier-pricing/export", controller.exportSupplierPricing);
 
 module.exports = router;

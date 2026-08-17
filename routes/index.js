@@ -23,6 +23,7 @@ const LayoutComponentRouter = require("../resource/app/router/layoutComponent.ro
 const productCategoryRouter = require("../resource/app/router/productCategory.routes");
 const uomRouter = require("../resource/app/router/uom.routes");
 const productRouter = require("../resource/app/router/product.routes");
+const supplierPricingRouter = require("../resource/app/router/supplierPricing.routes");
 const warehouseRouter = require("../resource/app/router/warehouse.routes");
 const supplierRouter = require("../resource/app/router/supplier.routes");
 const stockPositionRouter = require("../resource/app/router/stockPosition.routes");
@@ -65,6 +66,7 @@ router.use("/journal-write-off", journalWriteOffRouter);
 router.use("/product-category", productCategoryRouter);
 router.use("/uom", uomRouter);
 router.use("/product", productRouter);
+router.use("/supplier-pricing", supplierPricingRouter);
 router.use("/warehouse", warehouseRouter);
 router.use("/supplier", supplierRouter);
 router.use("/stock-position", stockPositionRouter);

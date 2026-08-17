@@ -45,7 +45,7 @@ const resolveProductCode = async (payload, session) => {
   // eslint-disable-next-line no-constant-condition
   while (true) {
     const seq = await nextInventorySeq(`PRODUCT:${category._id}`, session);
-    const code = `${prefix}-${String(seq).padStart(5, "0")}`;
+    const code = `${prefix}-${String(seq).padStart(4, "0")}`;
     // eslint-disable-next-line no-await-in-loop
     if (!(await productCodeExists(code, session))) return code;
   }
@@ -80,7 +80,6 @@ controller.index = async (req, res, next) => {
     const [data, total] = await Promise.all([
       ProductModel.find(query)
         .populate("product_category_id", "name prefix")
-        .populate("supplier_id", "name code")
         .populate("uom_id", "name code")
         .populate("product_image_id", "path")
         .sort({ _id: -1 })

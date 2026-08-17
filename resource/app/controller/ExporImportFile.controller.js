@@ -35,6 +35,7 @@ const AccountReceivableModel = require("../models/AccountReceivable.model");
 const AccountPayableModel = require("../models/AccountPayable.model");
 const ChartOfAccountModel = require("../models/ChartOfAccount.model");
 const DetailProductItemModel = require("../models/DetailProductItem.model");
+const SupplierPricingModel = require("../models/SupplierPricing.model");
 
 const controller = {};
 
@@ -317,12 +318,11 @@ controller.importProduct = async (req, res, next) => {
   try {
     const rows = parseRows(req.file);
 
-    // Resolve category / uom / supplier codes to their _id up front.
-    const [catByPrefix, catByName, uomByCode, supByCode] = await Promise.all([
+    // Resolve category / uom codes to their _id up front.
+    const [catByPrefix, catByName, uomByCode] = await Promise.all([
       codeIndex(ProductCategoryModel, "prefix"),
       codeIndex(ProductCategoryModel, "name"),
       codeIndex(UomModel, "code"),
-      codeIndex(SupplierModel, "code"),
     ]);
 
     const seen = new Set();
@@ -347,7 +347,6 @@ controller.importProduct = async (req, res, next) => {
         errors.push(`Row ${line}: category/uom not found (${code}).`);
         return;
       }
-      const supplierId = supByCode.get(upper(pick(row, "supplier"))) || null;
       const purchase_price = num(pick(row, "purchase_price", "harga_beli"));
       const selling_price = num(pick(row, "selling_price", "harga_jual"));
 
@@ -363,7 +362,6 @@ controller.importProduct = async (req, res, next) => {
               slug: globalService.createSlug(name),
               product_category_id: categoryId,
               uom_id: uomId,
-              supplier_id: supplierId,
               barcode: norm(pick(row, "barcode")),
               description: norm(pick(row, "description", "deskripsi")),
               is_active: bool(pick(row, "is_active", "aktif")),
@@ -1642,6 +1640,78 @@ controller.importDeliveryOrder = (req, res, next) => {
   }).catch(next);
 };
 
+controller.importSupplierPricing = async (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Import Supplier Pricing from Excel (.xlsx)'
+    #swagger.description = 'Import Supplier Pricing. Key = (name + supplier): when a row with the same name AND supplier already exists only its price & is_active are updated; otherwise a new entry is created (no duplicates).'
+    #swagger.consumes = ['multipart/form-data']
+    #swagger.parameters['file'] = { in: 'formData', type: 'file', required: true, description: 'Excel .xlsx file' }
+  */
+  try {
+    const rows = parseRows(req.file);
+    const [uomByCode, supByCode] = await Promise.all([
+      codeIndex(UomModel, "code"),
+      codeIndex(SupplierModel, "code"),
+    ]);
+
+    const seen = new Set();
+    const ops = [];
+    const errors = [];
+
+    rows.forEach((row, i) => {
+      const line = i + 2;
+      const name = upper(pick(row, "name", "nama"));
+      if (!name) {
+        errors.push(`Row ${line}: name is required.`);
+        return;
+      }
+      const uomId = uomByCode.get(upper(pick(row, "uom", "unit")));
+      if (!uomId) {
+        errors.push(`Row ${line}: uom not found (${name}).`);
+        return;
+      }
+      const supplierId = supByCode.get(upper(pick(row, "supplier"))) || null;
+
+      // Dedup dalam file: kombinasi name + supplier.
+      const key = `${name}|${supplierId ? String(supplierId) : ""}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+
+      const price = num(pick(row, "price", "harga"));
+      const is_active = bool(pick(row, "is_active", "aktif"));
+
+      ops.push({
+        updateOne: {
+          // Name + supplier sama -> update price & status aktif; kalau tidak
+          // ada -> buat baru (hindari duplikasi).
+          filter: { name, supplier_id: supplierId },
+          update: {
+            $set: { price, is_active },
+            $setOnInsert: {
+              name,
+              slug: globalService.createSlug(name),
+              supplier_id: supplierId,
+              uom_id: uomId,
+              barcode: norm(pick(row, "barcode")),
+            },
+          },
+          upsert: true,
+        },
+      });
+    });
+
+    const summary = await runBulk(SupplierPricingModel, ops, errors);
+    res.status(200).json({
+      success: true,
+      message: `Import 'supplier-pricing' finished: ${summary.inserted} created, ${summary.updated} updated, ${summary.skipped} skipped.`,
+      data: summary,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ============================================================
 // EXPORT handlers — one endpoint = one self-contained function. Each builds its
 // own query + populate + row map, then applies the shared created_at filter.
@@ -1659,8 +1729,7 @@ controller.exportProduct = async (req, res, next) => {
   try {
     const query = ProductModel.find({ is_delete: { $ne: true } })
       .populate("product_category_id", "name prefix")
-      .populate("uom_id", "code name")
-      .populate("supplier_id", "code name");
+      .populate("uom_id", "code name");
     const docs = await applyDateFilter(query, req)
       .sort({ created_at: -1 })
       .lean();
@@ -1671,7 +1740,6 @@ controller.exportProduct = async (req, res, next) => {
         name: d.name,
         category: refField(d.product_category_id, "name"),
         uom: refField(d.uom_id, "code"),
-        supplier: refField(d.supplier_id, "code"),
         purchase_price: d.purchase_price,
         selling_price: d.selling_price,
         barcode: d.barcode,
@@ -2375,6 +2443,46 @@ controller.exportChartOfAccount = async (req, res, next) => {
         parent_code: refField(d.parent_id, "code"),
         level: d.level,
         description: d.description,
+        created_at: d.created_at,
+      }),
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Data retrieved successfully!",
+      data,
+      page_size: data.length,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+controller.exportSupplierPricing = async (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Export Supplier Pricing as JSON rows'
+    #swagger.description = 'Return flattened Supplier Pricing rows filtered by created_at. Date fields DD/MM/YYYY (created_at DD/MM/YYYY HH:mm).'
+    #swagger.parameters['range'] = { in: 'query', type: 'string', description: '7d | 1m | 1y' }
+    #swagger.parameters['start_date'] = { in: 'query', type: 'string', description: 'ISO date (custom range start)' }
+    #swagger.parameters['end_date'] = { in: 'query', type: 'string', description: 'ISO date (custom range end)' }
+  */
+  try {
+    const query = SupplierPricingModel.find({ is_delete: { $ne: true } })
+      .populate("supplier_id", "code name")
+      .populate("uom_id", "code name");
+    const docs = await applyDateFilter(query, req)
+      .sort({ created_at: -1 })
+      .lean();
+
+    const data = docs.map((d) =>
+      formatRowDates({
+        name: d.name,
+        supplier: refField(d.supplier_id, "code"),
+        uom: refField(d.uom_id, "code"),
+        barcode: d.barcode,
+        price: d.price,
+        is_active: d.is_active,
         created_at: d.created_at,
       }),
     );

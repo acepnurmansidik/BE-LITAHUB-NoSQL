@@ -3,51 +3,41 @@ const { nextInventorySeq } = require("../../helper/inventorySequence");
 const globalService = require("../../helper/global-func");
 const BadRequest = require("../../utils/errors/bad-request");
 const NotFound = require("../../utils/errors/not-found");
-const SupplierModel = require("../models/Supplier.model");
+const ProductCategoryModel = require("../models/ProductCategory.model");
+const ImageModel = require("../models/Image.model");
 const LogActionModel = require("../models/LogAction.model");
+const SupplierPricingModel = require("../models/SupplierPricing.model");
 
 const controller = {};
 
-// Tentukan kode supplier: manual (validasi unik) atau otomatis (SUP-####,
-// sequence khusus supplier).
-const resolveSupplierCode = async (payload, session) => {
-  const exists = async (code) =>
-    !!(await SupplierModel.exists({ code, is_delete: { $ne: true } }).session(
-      session ?? null,
-    ));
-
-  if (payload.code) {
-    const code = String(payload.code).trim().toUpperCase();
-    if (await exists(code)) {
-      throw new BadRequest(`Supplier code '${code}' already exists.`);
-    }
-    return code;
-  }
-
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    const seq = await nextInventorySeq("SUPPLIER", session);
-    const code = `SUP-${String(seq).padStart(4, "0")}`;
-    // eslint-disable-next-line no-await-in-loop
-    if (!(await exists(code))) return code;
-  }
+// Set flag `status` pada Image (true = dipakai, false = lepas). Aman untuk id
+// null/undefined (langsung di-skip).
+const setImageStatus = async (imageId, status, session) => {
+  if (!imageId) return;
+  await ImageModel.findOneAndUpdate({ _id: imageId }, { status }, { session });
 };
 
 controller.index = async (req, res, next) => {
   /*
-    #swagger.tags = ['Supplier']
-    #swagger.summary = 'List Suppliers'
-    #swagger.description = 'Retrieve a paginated list of suppliers.'
+    #swagger.tags = ['Supplier Pricing']
+    #swagger.summary = 'List Supplier Pricing'
+    #swagger.description = 'Retrieve a paginated list of supplier pricing with optional unit & search filters.'
     #swagger.parameters['page'] = { default: 1 }
     #swagger.parameters['limit'] = { default: 10 }
     #swagger.parameters['search'] = { default: '', description: 'name / code' }
+    #swagger.parameters['uom_id'] = { default: '' }
+    #swagger.parameters['name'] = { default: '', description: 'exact product name (uppercase-insensitive) — supplier untuk sebuah produk' }
   */
   try {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
-    const { search } = req.query;
+    const { search, uom_id, name } = req.query;
 
     const query = { is_delete: { $ne: true } };
+    if (uom_id) query.uom_id = uom_id;
+    // Filter cocok-persis nama produk (nama disimpan uppercase). Dipakai untuk
+    // mengambil supplier yang memiliki produk tersebut (form PO).
+    if (name) query.name = String(name).trim().toUpperCase();
     if (search) {
       query["$or"] = [
         { name: { $regex: search, $options: "i" } },
@@ -56,11 +46,14 @@ controller.index = async (req, res, next) => {
     }
 
     const [data, total] = await Promise.all([
-      SupplierModel.find(query)
+      SupplierPricingModel.find(query)
+        .populate("supplier_id", "name code")
+        .populate("uom_id", "name code")
+        .populate("product_image_id", "path")
         .sort({ _id: -1 })
         .skip((page - 1) * limit)
         .limit(limit),
-      SupplierModel.countDocuments(query),
+      SupplierPricingModel.countDocuments(query),
     ]);
 
     res.status(200).json({
@@ -77,16 +70,18 @@ controller.index = async (req, res, next) => {
 
 controller.show = async (req, res, next) => {
   /*
-    #swagger.tags = ['Supplier']
-    #swagger.summary = 'Get Supplier detail'
-    #swagger.parameters['id'] = { description: 'id supplier' }
+    #swagger.tags = ['Supplier Pricing']
+    #swagger.summary = 'Get Supplier Pricing detail'
+    #swagger.parameters['id'] = { description: 'id supplier pricing' }
   */
   try {
     const { id } = req.params;
-    const data = await SupplierModel.findOne({
+    const data = await SupplierPricingModel.findOne({
       _id: id,
       is_delete: { $ne: true },
-    });
+    })
+      .populate("uom_id", "name code")
+      .populate("product_image_id", "path");
     if (!data) throw new NotFound(`Data with id '${id}' not found!`);
 
     res.status(200).json({
@@ -101,34 +96,37 @@ controller.show = async (req, res, next) => {
 
 controller.create = async (req, res, next) => {
   /*
-    #swagger.tags = ['Supplier']
-    #swagger.summary = 'Create Supplier'
-    #swagger.description = 'Create a new supplier with a slug auto-generated from its name.'
+    #swagger.tags = ['Supplier Pricing']
+    #swagger.summary = 'Create Supplier Pricing'
+    #swagger.description = 'Create a new supplier pricing entry.'
     #swagger.parameters['obj'] = {
-      in: 'body',
-      description: 'Create supplier',
-      schema: { $ref: '#/definitions/BodySupplierSchema' }
+      in: 'body', description: 'Create product',
+      schema: { $ref: '#/definitions/BodyProductSchema' }
     }
   */
   try {
     const payload = req.body;
-    if (!payload?.name) throw new BadRequest("Supplier name is required.");
+    if (!payload?.uom_id) throw new BadRequest("uom_id is required.");
+    if (!payload?.name) throw new BadRequest("name is required.");
 
     const result = await runWithOptionalTransaction(async (session) => {
-      // Kode: manual (validasi unik) atau auto-generate (SUP-####).
-      const code = await resolveSupplierCode(payload, session);
-      const [data] = await SupplierModel.create([{ ...payload, code }], {
+      // Kode/SKU: manual (validasi unik) atau auto-generate per kategori.
+      const [product] = await SupplierPricingModel.create([{ ...payload }], {
         session,
       });
+
+      // Tandai gambar terpilih sebagai dipakai (status = true).
+      await setImageStatus(product.product_image_id, true, session);
+
       await LogActionModel.create(
         [
           {
-            target_id: data._id,
-            source: SupplierModel.collection.collectionName,
+            target_id: product._id,
+            source: SupplierPricingModel.collection.collectionName,
             activities: [
               {
                 type: "CREATE",
-                after: data.toObject(),
+                after: product.toObject(),
                 created_by: req?.login?.user_id ?? null,
               },
             ],
@@ -136,7 +134,8 @@ controller.create = async (req, res, next) => {
         ],
         { session },
       );
-      return data;
+
+      return product;
     });
 
     res.status(201).json({
@@ -151,42 +150,47 @@ controller.create = async (req, res, next) => {
 
 controller.update = async (req, res, next) => {
   /*
-    #swagger.tags = ['Supplier']
-    #swagger.summary = 'Update Supplier'
-    #swagger.description = 'Update an existing supplier.'
-    #swagger.parameters['id'] = { description: 'id supplier' }
-    #swagger.parameters['obj'] = {
-      in: 'body',
-      description: 'Update supplier',
-      schema: { $ref: '#/definitions/BodySupplierSchema' }
-    }
+    #swagger.tags = ['Supplier Pricing']
+    #swagger.summary = 'Update Supplier Pricing'
+    #swagger.description = 'Update an existing supplier pricing entry and reconcile its linked image.'
+    #swagger.parameters['id'] = { description: 'id supplier pricing' }
   */
   try {
     const { id } = req.params;
     const payload = req.body;
 
     const result = await runWithOptionalTransaction(async (session) => {
-      const doc = await SupplierModel.findOne({
+      const doc = await SupplierPricingModel.findOne({
         _id: id,
         is_delete: { $ne: true },
       }).session(session);
       if (!doc) throw new NotFound(`Data with id '${id}' not found!`);
 
       const before = doc.toObject();
+      const prevImageId = doc.product_image_id
+        ? String(doc.product_image_id)
+        : null;
 
-      // Slug bersifat stabil setelah dibuat — jangan ditimpa dari body.
-      delete payload.code;
+      // Slug stabil setelah dibuat.
       delete payload.slug;
-
       doc.set(payload);
       await doc.save({ session });
+
+      // Bila gambar berubah: lepas gambar lama, pakai gambar baru.
+      const nextImageId = doc.product_image_id
+        ? String(doc.product_image_id)
+        : null;
+      if (prevImageId !== nextImageId) {
+        await setImageStatus(prevImageId, false, session);
+        await setImageStatus(nextImageId, true, session);
+      }
 
       await LogActionModel.findOneAndUpdate(
         { target_id: id },
         {
           $setOnInsert: {
             target_id: id,
-            source: SupplierModel.collection.collectionName,
+            source: SupplierPricingModel.collection.collectionName,
           },
           $push: {
             activities: {
@@ -215,15 +219,15 @@ controller.update = async (req, res, next) => {
 
 controller.delete = async (req, res, next) => {
   /*
-    #swagger.tags = ['Supplier']
-    #swagger.summary = 'Delete Supplier (soft delete)'
-    #swagger.parameters['id'] = { description: 'id supplier' }
+    #swagger.tags = ['Supplier Pricing']
+    #swagger.summary = 'Delete Supplier Pricing (soft delete)'
+    #swagger.parameters['id'] = { description: 'id supplier pricing' }
   */
   try {
     const { id } = req.params;
 
     const result = await runWithOptionalTransaction(async (session) => {
-      const doc = await SupplierModel.findOne({
+      const doc = await SupplierPricingModel.findOne({
         _id: id,
         is_delete: { $ne: true },
       }).session(session);
@@ -233,12 +237,15 @@ controller.delete = async (req, res, next) => {
       doc.is_delete = true;
       await doc.save({ session });
 
+      // Lepas gambar (status = false) saat produk dihapus.
+      await setImageStatus(doc.product_image_id, false, session);
+
       await LogActionModel.findOneAndUpdate(
         { target_id: id },
         {
           $setOnInsert: {
             target_id: id,
-            source: SupplierModel.collection.collectionName,
+            source: SupplierPricingModel.collection.collectionName,
           },
           $push: {
             activities: {

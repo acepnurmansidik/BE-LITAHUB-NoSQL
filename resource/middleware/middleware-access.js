@@ -1,32 +1,33 @@
+const { UnauthorizedError } = require("../utils/errors");
+
 const HasAccess = (path, action) => {
   return async (req, res, next) => {
     try {
       // Pastikan data login tersedia
-      const ACCESS = req.login?.has_access;
+      const ACCESS = req.login?.has_access ?? [];
+      const role = req.login?.role_name ?? "";
 
-      if (!ACCESS) {
-        return res
-          .status(401)
-          .json({ message: "Unauthorized: No access data found" });
-      }
+      const permissionAccess = new Map(
+        ACCESS.map((item) => [String(item.path), item.actions]),
+      );
 
-      // Cari path yang sesuai
-      const accessItem = ACCESS.find((item) => item.path === path);
-
-      // Cek apakah path ada DAN action-nya bernilai true
-      // Kita gunakan [action] untuk mengakses key di dalam object/map
       if (
-        accessItem &&
-        accessItem.actions &&
-        accessItem.actions[action] === true
+        !permissionAccess.get("/security/role") &&
+        !["Super Ultraman"].includes(role)
       ) {
-        return next();
+        throw new UnauthorizedError(`You do not have access to this module!`);
       }
 
-      // Jika tidak ditemukan atau action false
-      return res.status(403).json({
-        message: `Forbidden: You do not have access permission for this path`,
-      });
+      if (
+        !permissionAccess.get("/security/role")[action.toLowerCase()] &&
+        !["Super Ultraman"].includes(role)
+      ) {
+        throw new UnauthorizedError(
+          `You do not have permission to perform this action!`,
+        );
+      }
+
+      next();
     } catch (err) {
       next(err);
     }

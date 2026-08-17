@@ -76,6 +76,11 @@ const DetailProductItemSchema = new Schema(
       default: 0,
       min: [0, "Purchase price cannot be negative"],
     },
+    new_price: {
+      type: Number,
+      default: 0,
+      min: [0, "Purchase price cannot be negative"],
+    },
     subtotal: { type: Number, default: 0 },
 
     // Siklus status item (English):

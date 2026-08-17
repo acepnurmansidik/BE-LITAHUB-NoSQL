@@ -30,6 +30,7 @@ controller.index = async (req, res, next) => {
 
     const [data, total] = await Promise.all([
       StockMovementModel.find(query)
+        .populate("uom_id", "name")
         .populate("product_id", "name code")
         .populate("warehouse_id", "name code")
         .sort({ date: -1, _id: -1 })
