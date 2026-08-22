@@ -11,25 +11,38 @@ const controller = {};
 // terurut mengikuti `sequence` tiap module (kecil -> besar). Module tanpa
 // sequence ditaruh paling belakang. Dipakai bersama oleh create & update agar
 // urutan module selalu konsisten dengan sequence di role.
+// Urutkan halaman (permission) sebuah module mengikuti `sequence` (kecil ->
+// besar); halaman tanpa sequence memakai urutan aslinya. Halaman yang tidak
+// dikirim payload otomatis terbuang (bisa dihapus/ditambah dari sisi frontend).
+const orderPerms = (perms = []) =>
+  [...(Array.isArray(perms) ? perms : [])]
+    .map((p, i) => ({
+      p,
+      key: Number.isFinite(p?.sequence) ? p.sequence : i + 1,
+    }))
+    .sort((a, b) => a.key - b.key)
+    .map((x) => x.p);
+
 const createChildren = async (roleId, modules, session) => {
   const sorted = [...modules].sort(
     (a, b) => (a?.sequence ?? Infinity) - (b?.sequence ?? Infinity),
   );
 
-  // 1. Dokumen RoleModule (satu per module) — sequence ikut disimpan.
+  // 1. Dokumen RoleModule (satu per module) — sequence module & halaman ikut
+  //    disimpan; halaman diurutkan mengikuti sequence-nya.
   const moduleDocs = sorted.map((mod, index) => ({
     role_id: roleId,
     name: mod.name,
     title: mod.title,
     sequence: mod.sequence ?? index + 1,
-    permission: mod.permission ?? [],
+    permission: orderPerms(mod.permission),
   }));
 
-  // 2. Dokumen PathAccess dari tiap menu.
+  // 2. Dokumen PathAccess dari tiap menu (mengikuti urutan halaman).
   //    Menu tanpa children -> pakai path menu itu; ada children -> path child.
   const pathDocs = [];
   for (const mod of sorted) {
-    for (const menu of mod.permission ?? []) {
+    for (const menu of orderPerms(mod.permission)) {
       const targets = menu.children?.length ? menu.children : [menu];
       for (const target of targets) {
         pathDocs.push({

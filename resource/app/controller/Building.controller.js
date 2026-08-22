@@ -10,7 +10,7 @@ const NotFound = require("../../utils/errors/not-found");
 const BranchModel = require("../models/Branch.model");
 const BuildingModel = require("../models/Building.model");
 const BuildingFloorModel = require("../models/BuildingFloor.model");
-const RoomUnitModel = require("../models/RoomUnit.model");
+const UnitModel = require("../models/Unit.model");
 const LogActionModel = require("../models/LogAction.model");
 
 const controller = {};
@@ -309,7 +309,7 @@ controller.delete = async (req, res, next) => {
         { is_delete: true },
         { session },
       );
-      await RoomUnitModel.updateMany(
+      await UnitModel.updateMany(
         { building_id: id },
         { is_delete: true },
         { session },

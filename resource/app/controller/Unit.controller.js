@@ -4,7 +4,7 @@ const globalService = require("../../helper/global-func");
 const BadRequest = require("../../utils/errors/bad-request");
 const NotFound = require("../../utils/errors/not-found");
 const BuildingFloorModel = require("../models/BuildingFloor.model");
-const RoomUnitModel = require("../models/RoomUnit.model");
+const UnitModel = require("../models/Unit.model");
 const LogActionModel = require("../models/LogAction.model");
 
 const controller = {};
@@ -20,7 +20,7 @@ const nameExistsOnFloor = async (floorId, name, session, excludeId) => {
     name: { $regex: `^${escapeRegex(String(name).trim())}$`, $options: "i" },
   };
   if (excludeId) query._id = { $ne: excludeId };
-  const found = await RoomUnitModel.findOne(query)
+  const found = await UnitModel.findOne(query)
     .session(session ?? null)
     .lean();
   return !!found;
@@ -28,9 +28,9 @@ const nameExistsOnFloor = async (floorId, name, session, excludeId) => {
 
 controller.index = async (req, res, next) => {
   /*
-    #swagger.tags = ['Room Unit']
-    #swagger.summary = 'List Room Units'
-    #swagger.description = 'Retrieve a paginated list of room units with optional search and filters by branch, building, floor and status.'
+    #swagger.tags = ['Unit']
+    #swagger.summary = 'List Units'
+    #swagger.description = 'Retrieve a paginated list of Units with optional search and filters by branch, building, floor and status.'
     #swagger.parameters['page'] = { default: 1 }
     #swagger.parameters['limit'] = { default: 10 }
     #swagger.parameters['search'] = { default: '', description: 'name / code' }
@@ -57,7 +57,7 @@ controller.index = async (req, res, next) => {
     }
 
     const [data, total] = await Promise.all([
-      RoomUnitModel.find(query)
+      UnitModel.find(query)
         .populate("building_id", "name code")
         .populate("floor_id", "name code floor_level")
         .populate("image_id", "path")
@@ -70,7 +70,7 @@ controller.index = async (req, res, next) => {
         .sort({ _id: -1 })
         .skip((page - 1) * limit)
         .limit(limit),
-      RoomUnitModel.countDocuments(query),
+      UnitModel.countDocuments(query),
     ]);
 
     res.status(200).json({
@@ -87,14 +87,14 @@ controller.index = async (req, res, next) => {
 
 controller.show = async (req, res, next) => {
   /*
-    #swagger.tags = ['Room Unit']
-    #swagger.summary = 'Get Room Unit detail'
-    #swagger.description = 'Retrieve the details of a single room unit by its ID.'
-    #swagger.parameters['id'] = { description: 'room unit id' }
+    #swagger.tags = ['Unit']
+    #swagger.summary = 'Get Unit detail'
+    #swagger.description = 'Retrieve the details of a single Unit by its ID.'
+    #swagger.parameters['id'] = { description: 'Unit id' }
   */
   try {
     const { id } = req.params;
-    const data = await RoomUnitModel.findOne({
+    const data = await UnitModel.findOne({
       _id: id,
       is_delete: { $ne: true },
     })
@@ -117,12 +117,12 @@ controller.show = async (req, res, next) => {
 
 controller.create = async (req, res, next) => {
   /*
-    #swagger.tags = ['Room Unit']
-    #swagger.summary = 'Create Room Unit'
-    #swagger.description = 'Create a room unit where the code and name follow the running room count on the floor.'
+    #swagger.tags = ['Unit']
+    #swagger.summary = 'Create Unit'
+    #swagger.description = 'Create a Unit where the code and name follow the running room count on the floor.'
     #swagger.parameters['obj'] = {
-      in: 'body', description: 'Create room unit',
-      schema: { $ref: '#/definitions/BodyRoomUnitSchema' }
+      in: 'body', description: 'Create Unit',
+      schema: { $ref: '#/definitions/BodyUnitSchema' }
     }
   */
   try {
@@ -143,7 +143,7 @@ controller.create = async (req, res, next) => {
       const building = floor.building_id;
 
       // Urutan ruangan berikutnya di lantai ini = jumlah ruangan + 1.
-      const existingCount = await RoomUnitModel.countDocuments({
+      const existingCount = await UnitModel.countDocuments({
         floor_id: floor._id,
         is_delete: { $ne: true },
       }).session(session);
@@ -167,14 +167,14 @@ controller.create = async (req, res, next) => {
           name = buildRoomName(index);
         }
       }
-      const [room] = await RoomUnitModel.create(
+      const [room] = await UnitModel.create(
         [
           {
             branch_id: building.branch_id,
             building_id: building._id,
             floor_id: floor._id,
             code: buildRoomCode(floor.code, index),
-            name,
+            name: name.toLocaleUpperCase(),
             slug: globalService.createSlug(name),
             unit_type: payload.unit_type,
             status: payload.status,
@@ -194,7 +194,7 @@ controller.create = async (req, res, next) => {
         [
           {
             target_id: room._id,
-            source: RoomUnitModel.collection.collectionName,
+            source: UnitModel.collection.collectionName,
             activities: [
               {
                 type: "CREATE",
@@ -222,17 +222,17 @@ controller.create = async (req, res, next) => {
 
 controller.update = async (req, res, next) => {
   /*
-    #swagger.tags = ['Room Unit']
-    #swagger.summary = 'Update Room Unit'
-    #swagger.description = 'Update an existing room unit identified by its ID.'
-    #swagger.parameters['id'] = { description: 'room unit id' }
+    #swagger.tags = ['Unit']
+    #swagger.summary = 'Update Unit'
+    #swagger.description = 'Update an existing Unit identified by its ID.'
+    #swagger.parameters['id'] = { description: 'Unit id' }
   */
   try {
     const { id } = req.params;
     const payload = req.body;
 
     const result = await runWithOptionalTransaction(async (session) => {
-      const doc = await RoomUnitModel.findOne({
+      const doc = await UnitModel.findOne({
         _id: id,
         is_delete: { $ne: true },
       }).session(session);
@@ -260,6 +260,8 @@ controller.update = async (req, res, next) => {
       delete payload.branch_id;
       delete payload.building_id;
       delete payload.floor_id;
+
+      payload.name = payload.name.toLocaleUpperCase();
       doc.set(payload);
       await doc.save({ session });
 
@@ -268,7 +270,7 @@ controller.update = async (req, res, next) => {
         {
           $setOnInsert: {
             target_id: id,
-            source: RoomUnitModel.collection.collectionName,
+            source: UnitModel.collection.collectionName,
           },
           $push: {
             activities: {
@@ -297,16 +299,16 @@ controller.update = async (req, res, next) => {
 
 controller.delete = async (req, res, next) => {
   /*
-    #swagger.tags = ['Room Unit']
-    #swagger.summary = 'Delete Room Unit (soft delete)'
-    #swagger.description = 'Soft-delete a room unit by marking it as deleted without removing the record.'
-    #swagger.parameters['id'] = { description: 'room unit id' }
+    #swagger.tags = ['Unit']
+    #swagger.summary = 'Delete Unit (soft delete)'
+    #swagger.description = 'Soft-delete a Unit by marking it as deleted without removing the record.'
+    #swagger.parameters['id'] = { description: 'Unit id' }
   */
   try {
     const { id } = req.params;
 
     const result = await runWithOptionalTransaction(async (session) => {
-      const doc = await RoomUnitModel.findOne({
+      const doc = await UnitModel.findOne({
         _id: id,
         is_delete: { $ne: true },
       }).session(session);
@@ -321,7 +323,7 @@ controller.delete = async (req, res, next) => {
         {
           $setOnInsert: {
             target_id: id,
-            source: RoomUnitModel.collection.collectionName,
+            source: UnitModel.collection.collectionName,
           },
           $push: {
             activities: {

@@ -18,6 +18,9 @@ const PermissionSchema = new Schema(
     menu_name: { type: String, required: true },
     path: { type: String, required: true },
     actions: { type: [String], default: [] }, // Array of strings: ["view", "create"]
+    // Urutan tampil halaman dalam sebuah module (makin kecil makin atas) —
+    // sama fungsinya seperti `sequence` pada level module.
+    sequence: { type: Number, default: 0 },
     children: [SubMenuSchema],
   },
   { _id: false },

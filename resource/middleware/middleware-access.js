@@ -11,15 +11,12 @@ const HasAccess = (path, action) => {
         ACCESS.map((item) => [String(item.path), item.actions]),
       );
 
-      if (
-        !permissionAccess.get("/security/role") &&
-        !["Super Ultraman"].includes(role)
-      ) {
+      if (!permissionAccess.get(path) && !["Super Ultraman"].includes(role)) {
         throw new UnauthorizedError(`You do not have access to this module!`);
       }
 
       if (
-        !permissionAccess.get("/security/role")[action.toLowerCase()] &&
+        !permissionAccess.get(path)[action.toLowerCase()] &&
         !["Super Ultraman"].includes(role)
       ) {
         throw new UnauthorizedError(

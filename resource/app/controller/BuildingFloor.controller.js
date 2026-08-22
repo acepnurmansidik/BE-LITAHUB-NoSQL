@@ -8,7 +8,7 @@ const BadRequest = require("../../utils/errors/bad-request");
 const NotFound = require("../../utils/errors/not-found");
 const BuildingModel = require("../models/Building.model");
 const BuildingFloorModel = require("../models/BuildingFloor.model");
-const RoomUnitModel = require("../models/RoomUnit.model");
+const UnitModel = require("../models/Unit.model");
 const LogActionModel = require("../models/LogAction.model");
 const ImageModel = require("../models/Image.model");
 
@@ -282,7 +282,7 @@ controller.delete = async (req, res, next) => {
       doc.is_delete = true;
       await doc.save({ session });
 
-      await RoomUnitModel.updateMany(
+      await UnitModel.updateMany(
         { floor_id: id },
         { is_delete: true },
         { session },

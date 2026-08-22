@@ -1,4 +1,4 @@
-const controller = require("../controller/RoomUnit.controller");
+const controller = require("../controller/Unit.controller");
 const router = require("express").Router();
 
 router.get("/", controller.index);

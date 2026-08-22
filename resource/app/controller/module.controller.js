@@ -40,17 +40,28 @@ const collectPathActions = (permissions = []) => {
   return list;
 };
 
+// Beri nomor urut (sequence) tiap permission (halaman) mengikuti urutan array
+// yang dikirim (mulai 1) — jadi "urutan halaman = urutan pada permission saat
+// ini". Sama fungsinya seperti sequence pada level module.
+const withPermissionSequence = (permissions = []) =>
+  (Array.isArray(permissions) ? permissions : []).map((perm, index) => ({
+    ...perm,
+    sequence: index + 1,
+  }));
+
 // Bangun ulang permission untuk RoleModule dalam format yang sama dengan
 // seeder: bila punya children, actions parent dikosongkan dan actions child
-// dikonversi ke object; bila tidak, actions parent yang dikonversi.
+// dikonversi ke object; bila tidak, actions parent yang dikonversi. `sequence`
+// halaman ikut dibawa agar urutan halaman di role konsisten.
 const buildRoleModulePermission = (permissions = []) =>
-  permissions.map((perm) => {
+  permissions.map((perm, index) => {
     const hasChildren = perm.children && perm.children.length > 0;
     return {
       icon: perm.icon,
       menu_name: perm.menu_name,
       path: perm.path,
       actions: hasChildren ? {} : toActionObject(perm.actions),
+      sequence: Number.isFinite(perm.sequence) ? perm.sequence : index + 1,
       children: hasChildren
         ? perm.children.map((child) => ({
             name: child.name,
@@ -109,9 +120,10 @@ controller.createModule = async (req, res, next) => {
     }
   */
     const payload = req.body;
-    console.log(payload.permission[0].actions);
     payload.name = payload.name.toUpperCase();
     payload.slug = globalService.createSlug(payload.name);
+    // Urutkan halaman sesuai urutan yang dikirim.
+    payload.permission = withPermissionSequence(payload.permission);
 
     const result = await crudServices.create(ModuleModel, { data: payload });
     res.status(201).json({
@@ -148,6 +160,8 @@ controller.updateModule = async (req, res, next) => {
 
     payload.name = payload.name.toUpperCase();
     payload.slug = globalService.createSlug(payload.name);
+    // Urutkan halaman sesuai urutan yang dikirim.
+    payload.permission = withPermissionSequence(payload.permission);
 
     const result = await crudServices.update(ModuleModel, {
       id,

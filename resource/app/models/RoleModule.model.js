@@ -18,6 +18,8 @@ const RolePermissionSchema = new Schema(
     menu_name: { type: String, required: true },
     path: { type: String, required: true },
     actions: { type: Map, of: Boolean, default: {} }, // Record<string, boolean>
+    // Urutan halaman milik role (mengikuti sequence di master module).
+    sequence: { type: Number, default: 0 },
     children: [RoleMenuDetailSchema],
   },
   { _id: false },

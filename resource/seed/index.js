@@ -2,7 +2,7 @@ const bcrypt = require("bcryptjs");
 const roleModel = require("../app/models/Role.model");
 const globalService = require("../helper/global-func");
 const UsersModel = require("../app/models/Users.model");
-const { USER_IAM } = require("../utils/etc/permission");
+const { WEB_ACCESS } = require("../utils/etc/permission");
 const ModuleModel = require("../app/models/Module.model");
 const AuthUserModel = require("../app/models/Auth.model");
 const RoleModuleModel = require("../app/models/RoleModule.model");
@@ -796,16 +796,17 @@ const runMainSeeder = async () => {
       // ==========================================
       // SEEDER 1: PROSES MEMBUAT MODULE
       // ==========================================
-      for (const mod of USER_IAM) {
+      for (const mod of WEB_ACCESS) {
         const processedModule = {
           name: mod.name,
           title: mod.title,
           slug: globalService.createSlug(mod.name),
           sequence: mod.sequence ?? 0,
-          permission: mod.permission.map((perm) => ({
+          permission: mod.permission.map((perm, i) => ({
             icon: perm.icon,
             menu_name: perm.menu_name,
             path: perm.path,
+            sequence: Number(perm.sequence) || i + 1,
             actions: perm.actions,
             children: perm.children.map((child) => ({
               name: child.name,
@@ -867,7 +868,7 @@ const runMainSeeder = async () => {
           permission: [],
         };
 
-        for (const perm of mod.permission) {
+        mod.permission.forEach((perm, i) => {
           const hasChildren = perm.children && perm.children.length > 0;
 
           // Jika ada children, actions parent kosong, jika tidak, konversi ke object
@@ -879,6 +880,7 @@ const runMainSeeder = async () => {
             icon: perm.icon,
             menu_name: perm.menu_name,
             path: perm.path,
+            sequence: Number(perm.sequence) || i + 1,
             actions: permActions,
             children: [],
           };
@@ -894,7 +896,7 @@ const runMainSeeder = async () => {
           }
 
           moduleItem.permission.push(permissionItem);
-        }
+        });
         superUltramanData.has_access_module.push(moduleItem);
       }
 

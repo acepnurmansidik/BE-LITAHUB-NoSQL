@@ -17,7 +17,7 @@ const journalWriteOffRouter = require("../resource/app/router/journalWriteOff.ro
 const branchRouter = require("../resource/app/router/branch.routes");
 const buildingRouter = require("../resource/app/router/building.routes");
 const buildingFloorRouter = require("../resource/app/router/buildingFloor.routes");
-const roomUnitRouter = require("../resource/app/router/roomUnit.routes");
+const unitRouter = require("../resource/app/router/unit.routes");
 const AuthorizeUserLogin = require("../resource/middleware/authentification");
 const LayoutComponentRouter = require("../resource/app/router/layoutComponent.routes");
 const productCategoryRouter = require("../resource/app/router/productCategory.routes");
@@ -54,7 +54,7 @@ router.use("/module", moduleRouter);
 router.use("/branch", branchRouter);
 router.use("/building", buildingRouter);
 router.use("/building-floor", buildingFloorRouter);
-router.use("/room-unit", roomUnitRouter);
+router.use("/unit", unitRouter);
 
 // FINANCE
 router.use("/chart-of-account", chartOfAccountRouter);

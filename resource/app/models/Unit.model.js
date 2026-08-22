@@ -25,7 +25,7 @@ const RoomComponentSchema = new mongoose.Schema(
   { _id: false },
 );
 
-const RoomUnitSchema = new mongoose.Schema(
+const UnitSchema = new mongoose.Schema(
   {
     branch_id: {
       type: mongoose.Schema.Types.ObjectId,
@@ -129,11 +129,10 @@ const RoomUnitSchema = new mongoose.Schema(
 );
 
 // Auto generate slug dari nama unit/ruangan sebelum validasi
-RoomUnitSchema.pre("validate", function (next) {
+UnitSchema.pre("validate", function (next) {
   if (this.name && !this.slug) {
     this.slug = globalService.createSlug(this.name);
   }
 });
 
-module.exports =
-  mongoose.models.RoomUnit || mongoose.model("RoomUnit", RoomUnitSchema);
+module.exports = mongoose.models.Unit || mongoose.model("Unit", UnitSchema);

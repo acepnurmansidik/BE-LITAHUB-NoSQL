@@ -46,7 +46,7 @@ const FacilitySchema = {
     floor_plan_url_id: null,
     notes: "",
   },
-  BodyRoomUnitSchema: {
+  BodyUnitSchema: {
     floor_id: "000000000000000000000000",
     name: "",
     unit_type: "bedroom",
