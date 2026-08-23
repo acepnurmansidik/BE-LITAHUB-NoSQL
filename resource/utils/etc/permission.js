@@ -289,6 +289,11 @@ const WEB_ACCESS = [
             path: "/setting/formula/component",
             actions: ["view", "create", "update", "delete"],
           },
+          {
+            name: "Utility",
+            path: "/setting/formula/utility",
+            actions: ["view", "create", "update", "delete"],
+          },
         ],
       },
       {

@@ -35,6 +35,7 @@ const goodReceiptRouter = require("../resource/app/router/goodReceipt.routes");
 const deliveryOrderRouter = require("../resource/app/router/deliveryOrder.routes");
 const uploadRouter = require("../resource/app/router/upload.routes");
 const exportImportRouter = require("../resource/app/router/exportImportFile.routes");
+const utilityFormulaRouter = require("../resource/app/router/utilityFormula.routes");
 const dashboardRouter = require("../resource/app/router/dashboard.routes");
 
 router.use("/app-configs", appConfigRouter);
@@ -47,6 +48,7 @@ router.use("/department", departmentRouter);
 router.use("/layout-component", LayoutComponentRouter);
 router.use("/component-formula", componentFormulaRouter);
 router.use("/calculated-formula", calculatedFormulaRouter);
+router.use("/utility-formula", utilityFormulaRouter);
 router.use("/role", roleRouter);
 router.use("/module", moduleRouter);
 
