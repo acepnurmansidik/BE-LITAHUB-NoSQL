@@ -33,7 +33,7 @@ const SCALAR_BROWSER_DIR = path.join(
 // `#swagger.tags` pada controller.
 const TAG_GROUPS = [
   {
-    name: "Authentication & Access",
+    name: "AUTHENTICATION & ACCESS",
     // Deskripsi group (Markdown). Ditempelkan ke tag pertama ("Authentication")
     // sehingga tampil tepat di bawah nama group di Scalar.
     description:
@@ -46,7 +46,15 @@ const TAG_GROUPS = [
     tags: ["Authentication", "User & IAM", "Role", "Module"],
   },
   {
-    name: "Finance",
+    name: "BILL",
+    tags: ["IPL", "Parking", "Vehicle"],
+  },
+  {
+    name: "UTILITY",
+    tags: ["Electric", "Water", "Vehicle Utility"],
+  },
+  {
+    name: "FINANCE",
     tags: [
       "Chart of Account",
       "Journal Entry",
@@ -56,7 +64,7 @@ const TAG_GROUPS = [
     ],
   },
   {
-    name: "Inventory",
+    name: "INVENTORY",
     tags: [
       "Product Category",
       "Unit of Measure",
@@ -68,19 +76,26 @@ const TAG_GROUPS = [
     ],
   },
   {
-    name: "Procurement",
+    name: "PROCURMENT",
     tags: ["Purchase Request", "Purchase Order", "Good Receipt"],
   },
   {
-    name: "Space Management",
-    tags: ["Branch", "Building", "Building Floor", "Room Unit", "Layout Component"],
+    name: "SPACE MANAGEMENT",
+    tags: [
+      "Branch",
+      "Building",
+      "Building Floor",
+      "Unit",
+      "Layout Component",
+      "Vehicle Rate",
+    ],
   },
   {
-    name: "Organization",
+    name: "ORGANIZATION",
     tags: ["Department"],
   },
   {
-    name: "Configuration",
+    name: "CONFIGURATION",
     tags: [
       "App Configuration",
       "Reference Parameter",
@@ -89,7 +104,7 @@ const TAG_GROUPS = [
     ],
   },
   {
-    name: "Utilities",
+    name: "ETC",
     tags: ["File Upload"],
   },
 ];

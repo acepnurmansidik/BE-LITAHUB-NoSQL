@@ -1,6 +1,4 @@
 const mongoose = require("mongoose");
-const globalService = require("../../helper/global-func");
-const { generateShortCode } = require("../../helper/codeGenerator");
 
 const UtilityFormulaSchema = new mongoose.Schema(
   {

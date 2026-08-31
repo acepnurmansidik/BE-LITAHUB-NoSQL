@@ -124,7 +124,7 @@ const UnitSchema = new mongoose.Schema(
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
     versionKey: false,
-    collection: "room_units",
+    collection: "units",
   },
 );
 

@@ -10,6 +10,8 @@ const FinanceSchema = require("./finance.schema");
 const ProcurementSchema = require("./procurement.schema");
 const SecuritySchema = require("./security.schema");
 const UtilityFormulaSchema = require("./utilityFormula.schema");
+const VehicleRateSchema = require("./vehicleRate.schema");
+const VehicleUtilitySchema = require("./vehicleUtility.schema");
 
 const GlobalSchema = {
   ...Authchema.Register,
@@ -26,6 +28,8 @@ const GlobalSchema = {
   ...ProcurementSchema,
   ...SecuritySchema,
   ...UtilityFormulaSchema,
+  ...VehicleRateSchema,
+  ...VehicleUtilitySchema,
 };
 
 module.exports = GlobalSchema;

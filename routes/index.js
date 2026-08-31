@@ -18,6 +18,8 @@ const branchRouter = require("../resource/app/router/branch.routes");
 const buildingRouter = require("../resource/app/router/building.routes");
 const buildingFloorRouter = require("../resource/app/router/buildingFloor.routes");
 const unitRouter = require("../resource/app/router/unit.routes");
+const vehicleRateRouter = require("../resource/app/router/vehicleRate.routes");
+const vehicleUtilityRouter = require("../resource/app/router/vehicleUtility.routes");
 const AuthorizeUserLogin = require("../resource/middleware/authentification");
 const LayoutComponentRouter = require("../resource/app/router/layoutComponent.routes");
 const productCategoryRouter = require("../resource/app/router/productCategory.routes");
@@ -57,6 +59,7 @@ router.use("/branch", branchRouter);
 router.use("/building", buildingRouter);
 router.use("/building-floor", buildingFloorRouter);
 router.use("/unit", unitRouter);
+router.use("/vehicle-rate", vehicleRateRouter);
 
 // FINANCE
 router.use("/chart-of-account", chartOfAccountRouter);
@@ -85,6 +88,7 @@ router.use("/delivery-order", deliveryOrderRouter);
 router.use("/upload", uploadRouter);
 router.use("/import-export", exportImportRouter);
 router.use("/dashboard", dashboardRouter);
+router.use("/vehicle-utility", vehicleUtilityRouter);
 
 router.use(AuthorizeUserLogin);
 
