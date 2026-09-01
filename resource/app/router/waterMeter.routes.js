@@ -1,7 +1,9 @@
-const controller = require("../controller/Branch.controller");
+const controller = require("../controller/WaterMeter.controller");
+
 const router = require("express").Router();
 
 router.get("/", controller.index);
+router.get("/prev-meter", controller.prevMeter);
 router.get("/:id", controller.show);
 router.post("/", controller.create);
 router.put("/:id", controller.update);

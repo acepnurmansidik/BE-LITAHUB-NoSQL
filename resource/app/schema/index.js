@@ -2,7 +2,6 @@ const Authchema = require("./auth.schema");
 const RefParameterSchema = require("./ReffParameter.schema");
 const AppConfigSchema = require("./appConfig.schema");
 const FormulaSchema = require("./formula.schema");
-const FacilitySchema = require("./branch.schema");
 const LayoutComponentSchema = require("./LayoutComponent.schema");
 const InventorySchema = require("./inventory.schema");
 const DepartmentSchema = require("./Department.schema");
@@ -12,6 +11,8 @@ const SecuritySchema = require("./security.schema");
 const UtilityFormulaSchema = require("./utilityFormula.schema");
 const VehicleRateSchema = require("./vehicleRate.schema");
 const VehicleUtilitySchema = require("./vehicleUtility.schema");
+const WaterMeterSchema = require("./waterMeter.schema");
+const ElectricMeterSchema = require("./electricMeter.schema");
 
 const GlobalSchema = {
   ...Authchema.Register,
@@ -20,7 +21,6 @@ const GlobalSchema = {
   ...RefParameterSchema,
   ...AppConfigSchema,
   ...FormulaSchema,
-  ...FacilitySchema,
   ...LayoutComponentSchema,
   ...InventorySchema,
   ...DepartmentSchema,
@@ -30,6 +30,8 @@ const GlobalSchema = {
   ...UtilityFormulaSchema,
   ...VehicleRateSchema,
   ...VehicleUtilitySchema,
+  ...WaterMeterSchema,
+  ...ElectricMeterSchema,
 };
 
 module.exports = GlobalSchema;

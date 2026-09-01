@@ -3,11 +3,6 @@ const globalService = require("../../helper/global-func");
 
 const BuildingSchema = new mongoose.Schema(
   {
-    branch_id: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Branch",
-      required: [true, "Branch reference is required"],
-    },
     code: {
       type: String,
       required: [true, "Building code is required"],

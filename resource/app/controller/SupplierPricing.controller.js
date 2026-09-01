@@ -4,18 +4,10 @@ const globalService = require("../../helper/global-func");
 const BadRequest = require("../../utils/errors/bad-request");
 const NotFound = require("../../utils/errors/not-found");
 const ProductCategoryModel = require("../models/ProductCategory.model");
-const ImageModel = require("../models/Image.model");
 const LogActionModel = require("../models/LogAction.model");
 const SupplierPricingModel = require("../models/SupplierPricing.model");
 
 const controller = {};
-
-// Set flag `status` pada Image (true = dipakai, false = lepas). Aman untuk id
-// null/undefined (langsung di-skip).
-const setImageStatus = async (imageId, status, session) => {
-  if (!imageId) return;
-  await ImageModel.findOneAndUpdate({ _id: imageId }, { status }, { session });
-};
 
 controller.index = async (req, res, next) => {
   /*
@@ -116,7 +108,7 @@ controller.create = async (req, res, next) => {
       });
 
       // Tandai gambar terpilih sebagai dipakai (status = true).
-      await setImageStatus(product.product_image_id, true, session);
+      await globalService.setImageStatus(product.product_image_id, true, session);
 
       await LogActionModel.create(
         [
@@ -181,8 +173,8 @@ controller.update = async (req, res, next) => {
         ? String(doc.product_image_id)
         : null;
       if (prevImageId !== nextImageId) {
-        await setImageStatus(prevImageId, false, session);
-        await setImageStatus(nextImageId, true, session);
+        await globalService.setImageStatus(prevImageId, false, session);
+        await globalService.setImageStatus(nextImageId, true, session);
       }
 
       await LogActionModel.findOneAndUpdate(
@@ -238,7 +230,7 @@ controller.delete = async (req, res, next) => {
       await doc.save({ session });
 
       // Lepas gambar (status = false) saat produk dihapus.
-      await setImageStatus(doc.product_image_id, false, session);
+      await globalService.setImageStatus(doc.product_image_id, false, session);
 
       await LogActionModel.findOneAndUpdate(
         { target_id: id },

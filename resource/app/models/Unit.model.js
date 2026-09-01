@@ -27,11 +27,6 @@ const RoomComponentSchema = new mongoose.Schema(
 
 const UnitSchema = new mongoose.Schema(
   {
-    branch_id: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Branch",
-      required: [true, "Branch reference is required"],
-    },
     building_id: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Building",

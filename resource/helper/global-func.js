@@ -5,7 +5,6 @@ const ImageSchema = require("../app/models/Image.model");
 const { default: mongoose } = require("mongoose");
 const path = require("path");
 const fs = require("fs");
-const { UnauthenticatedError } = require("../utils/errors");
 const globalService = {};
 
 const transporter = nodemailer.createTransport({
@@ -238,6 +237,91 @@ globalService.toTitleCase = (text) => {
     .trim() // Menghapus spasi di awal dan akhir string
     .replace(/\s+/g, " ") // Menggabungkan multi-spasi menjadi satu spasi
     .replace(/\b\w/g, (char) => char.toUpperCase()); // Mengubah huruf pertama setiap kata menjadi kapital
+};
+
+/**
+ * -----------------------------------------------
+ * | MONTH RANGE
+ * -----------------------------------------------
+ * | Compute the [start, end) range of the month for a given date (UTC-based
+ * | so it stays consistent across timezones). Used to check for duplicate
+ * | records "within the same month".
+ * |
+ * | @param {string|number|Date} value - Any date-parseable value
+ * | @returns {{start: Date, end: Date}|null} Month range, or null when the
+ * |          date is invalid
+ * |
+ * | Example:
+ * | globalService.monthRange("2026-08-15")
+ * |   -> { start: 2026-08-01T00:00:00Z, end: 2026-09-01T00:00:00Z }
+ */
+globalService.monthRange = (value) => {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+  const start = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1));
+  const end = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1));
+  return { start, end };
+};
+
+/**
+ * -----------------------------------------------
+ * | MONTH & YEAR FILTER RANGE
+ * -----------------------------------------------
+ * | Build a [start, end) Date range from a month and/or year filter (dipakai
+ * | filter "misc > filter" di FE yang hanya menampilkan bulan & tahun).
+ * | - month + year  -> rentang satu bulan pada tahun itu.
+ * | - year saja     -> rentang sepanjang tahun.
+ * | - month saja    -> bulan itu pada tahun berjalan.
+ * | - keduanya kosong/invalid -> null (tanpa filter).
+ * |
+ * | @param {string|number} month - 1..12 (opsional)
+ * | @param {string|number} year  - contoh 2026 (opsional)
+ * | @returns {{start: Date, end: Date}|null}
+ * |
+ * | Example:
+ * | globalService.monthYearRange(8, 2026)
+ * |   -> { start: 2026-08-01T00:00:00Z, end: 2026-09-01T00:00:00Z }
+ */
+globalService.monthYearRange = (month, year) => {
+  const m = parseInt(month, 10);
+  const y = parseInt(year, 10);
+  const hasMonth = !Number.isNaN(m) && m >= 1 && m <= 12;
+  const hasYear = !Number.isNaN(y);
+
+  if (!hasMonth && !hasYear) return null;
+
+  const baseYear = hasYear ? y : new Date().getUTCFullYear();
+  if (hasMonth) {
+    return {
+      start: new Date(Date.UTC(baseYear, m - 1, 1)),
+      end: new Date(Date.UTC(baseYear, m, 1)),
+    };
+  }
+  return {
+    start: new Date(Date.UTC(baseYear, 0, 1)),
+    end: new Date(Date.UTC(baseYear + 1, 0, 1)),
+  };
+};
+
+/**
+ * -----------------------------------------------
+ * | SET IMAGE STATUS
+ * -----------------------------------------------
+ * | Flip the `status` flag on an Image document (true = in use, false = freed).
+ * | Safe to call with a null/undefined id (it is skipped). Pass a Mongoose
+ * | session to run inside a transaction.
+ * |
+ * | @param {string|ObjectId|null} imageId - target Image id (skipped when falsy)
+ * | @param {boolean} status - true = mark used, false = release
+ * | @param {ClientSession} [session] - optional transaction session
+ * | @returns {Promise<void>}
+ * |
+ * | Example:
+ * | await globalService.setImageStatus(doc.image_id, true, session);
+ */
+globalService.setImageStatus = async (imageId, status, session) => {
+  if (!imageId) return;
+  await ImageSchema.findOneAndUpdate({ _id: imageId }, { status }, { session });
 };
 
 module.exports = globalService;

@@ -41,15 +41,15 @@ const WEB_ACCESS = [
   },
   // MOD_UTILTY ===========================================================================
   {
-    name: "MOD_UTILTY",
-    title: "Utility",
+    name: "MOD_UTILITIES",
+    title: "Utilities",
     sequence: 3,
     permission: [
       {
         icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-zap-icon lucide-zap"><path d="M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z"/></svg>`,
         menu_name: "Electric",
         sequence: 1,
-        path: "/utility/electric",
+        path: "/utilities/electric",
         actions: [],
         children: [],
       },
@@ -57,7 +57,15 @@ const WEB_ACCESS = [
         icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-droplet-icon lucide-droplet"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/></svg>`,
         menu_name: "Water",
         sequence: 2,
-        path: "/utility/water",
+        path: "/utilities/water",
+        actions: [],
+        children: [],
+      },
+      {
+        icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-car-icon lucide-car"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg>`,
+        menu_name: "Vehicle Utility",
+        sequence: 3,
+        path: "/utilities/vehicle-utility",
         actions: [],
         children: [],
       },
@@ -354,34 +362,29 @@ const WEB_ACCESS = [
       },
       {
         icon: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-building-icon lucide-building"><path d="M12 10h.01"/><path d="M12 14h.01"/><path d="M12 6h.01"/><path d="M16 10h.01"/><path d="M16 14h.01"/><path d="M16 6h.01"/><path d="M8 10h.01"/><path d="M8 14h.01"/><path d="M8 6h.01"/><path d="M9 22v-3a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/><rect x="4" y="2" width="16" height="20" rx="2"/></svg>`,
-        menu_name: "Space Management",
+        menu_name: "Edifice Management",
         sequence: 4,
-        path: "/setting/space-management",
+        path: "/setting/edifice-management",
         actions: [],
         children: [
           {
-            name: "Branch",
-            path: "/setting/space-management/branches",
-            actions: ["view", "create", "update", "delete"],
-          },
-          {
             name: "Building",
-            path: "/setting/space-management/buildings",
+            path: "/setting/edifice-management/buildings",
             actions: ["view", "create", "update", "delete", "layout"],
           },
           {
             name: "Floor",
-            path: "/setting/space-management/building-floors",
+            path: "/setting/edifice-management/building-floors",
             actions: ["view", "create", "update", "delete"],
           },
           {
             name: "Unit",
-            path: "/setting/space-management/units",
+            path: "/setting/edifice-management/units",
             actions: ["view", "create", "update", "delete"],
           },
           {
             name: "Layout Components",
-            path: "/setting/space-management/layout-components",
+            path: "/setting/edifice-management/layout-components",
             actions: ["view", "create", "update", "delete"],
           },
         ],

@@ -30,11 +30,10 @@ controller.index = async (req, res, next) => {
   /*
     #swagger.tags = ['Unit']
     #swagger.summary = 'List Units'
-    #swagger.description = 'Retrieve a paginated list of Units with optional search and filters by branch, building, floor and status.'
+    #swagger.description = 'Retrieve a paginated list of Units with optional search and filters by building, floor and status.'
     #swagger.parameters['page'] = { default: 1 }
     #swagger.parameters['limit'] = { default: 10 }
     #swagger.parameters['search'] = { default: '', description: 'name / code' }
-    #swagger.parameters['branch_id'] = { default: '' }
     #swagger.parameters['building_id'] = { default: '' }
     #swagger.parameters['floor_id'] = { default: '' }
     #swagger.parameters['status'] = { default: '', description: 'available | occupied | under_maintenance | reserved' }
@@ -42,10 +41,9 @@ controller.index = async (req, res, next) => {
   try {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
-    const { search, branch_id, building_id, floor_id, status } = req.query;
+    const { search, building_id, floor_id, status } = req.query;
 
     const query = { is_delete: { $ne: true } };
-    if (branch_id) query.branch_id = branch_id;
     if (building_id) query.building_id = building_id;
     if (floor_id) query.floor_id = floor_id;
     if (status) query.status = status;
@@ -98,7 +96,6 @@ controller.show = async (req, res, next) => {
       _id: id,
       is_delete: { $ne: true },
     })
-      .populate("branch_id", "name code")
       .populate("building_id", "name code")
       .populate("floor_id", "name code floor_level")
       .populate("image_id", "path")
@@ -130,7 +127,7 @@ controller.create = async (req, res, next) => {
     if (!payload?.floor_id) throw new BadRequest("floor_id is required.");
 
     const result = await runWithOptionalTransaction(async (session) => {
-      // Ambil lantai beserta building-nya untuk menurunkan branch/building/kode.
+      // Ambil lantai beserta building-nya untuk menurunkan building/kode.
       const floor = await BuildingFloorModel.findOne({
         _id: payload.floor_id,
         is_delete: { $ne: true },
@@ -170,7 +167,6 @@ controller.create = async (req, res, next) => {
       const [room] = await UnitModel.create(
         [
           {
-            branch_id: building.branch_id,
             building_id: building._id,
             floor_id: floor._id,
             code: buildRoomCode(floor.code, index),
@@ -257,7 +253,6 @@ controller.update = async (req, res, next) => {
       // Kode, slug & relasi induk stabil setelah dibuat.
       delete payload.code;
       delete payload.slug;
-      delete payload.branch_id;
       delete payload.building_id;
       delete payload.floor_id;
 

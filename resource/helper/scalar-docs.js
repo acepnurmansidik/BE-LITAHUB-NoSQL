@@ -47,10 +47,22 @@ const TAG_GROUPS = [
   },
   {
     name: "BILL",
-    tags: ["IPL", "Parking", "Vehicle"],
+    tags: ["IPL", "Parking"],
   },
   {
     name: "UTILITY",
+    description:
+      "Modul pencatatan pemakaian utilitas per unit (meter listrik & air) beserta tarif kendaraan.\n\n" +
+      "**Logika meter (Electric & Water):** tiap bulan dicatat satu pembacaan meter per unit. Client **hanya mengirim `current_meter`** (angka meter saat ini); seluruh nilai turunan dihitung ulang & otoritatif di server:\n\n" +
+      "- **`prev_meter`** — meter awal, diambil dari `current_meter` pencatatan **terakhir** unit tersebut (berdasarkan `date`). Bernilai `0` bila unit belum pernah dicatat. Endpoint `GET /{modul}/prev-meter?unit_id=` dipakai untuk prefill nilai ini di form.\n" +
+      "- **`current_meter`** — satu-satunya input user (**wajib**), harus **≥ `prev_meter`** (ditolak bila lebih kecil).\n" +
+      "- **`usage_meter`** — pemakaian = `current_meter − prev_meter` (dihitung server).\n" +
+      "- **`actual_meter`** — di-set **hanya di backend** dari `usage_meter` (tidak diterima dari client).\n\n" +
+      "**Aturan tambahan:**\n" +
+      "- **Anti-duplikat:** satu unit hanya boleh punya satu pencatatan per bulan (rentang bulan dari `date`).\n" +
+      "- **Filter list:** query `month` (1-12) & `year` menyaring data berdasarkan bulan/tahun `date` — bulan+tahun (satu bulan), tahun saja (sepanjang tahun), atau bulan saja (tahun berjalan).\n" +
+      "- **Foto meter:** opsional via `image_id`; status gambar otomatis di-flag saat dipakai/dilepas.\n" +
+      "- Semua mutasi CREATE/UPDATE/DELETE ditulis transaksional beserta audit log.",
     tags: ["Electric", "Water", "Vehicle Utility"],
   },
   {
@@ -80,9 +92,8 @@ const TAG_GROUPS = [
     tags: ["Purchase Request", "Purchase Order", "Good Receipt"],
   },
   {
-    name: "SPACE MANAGEMENT",
+    name: "EDIFICE MANAGEMENT",
     tags: [
-      "Branch",
       "Building",
       "Building Floor",
       "Unit",

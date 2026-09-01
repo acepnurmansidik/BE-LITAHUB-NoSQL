@@ -18,7 +18,7 @@ controller.index = async (req, res, next) => {
   try {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
-    const { search, branch_id } = req.query;
+    const { search } = req.query;
 
     const query = { is_delete: { $ne: true } };
     if (search) {

@@ -7,7 +7,6 @@ const {
 const globalService = require("../../helper/global-func");
 const BadRequest = require("../../utils/errors/bad-request");
 const NotFound = require("../../utils/errors/not-found");
-const BranchModel = require("../models/Branch.model");
 const BuildingModel = require("../models/Building.model");
 const BuildingFloorModel = require("../models/BuildingFloor.model");
 const UnitModel = require("../models/Unit.model");
@@ -51,19 +50,17 @@ controller.index = async (req, res, next) => {
   /*
     #swagger.tags = ['Building']
     #swagger.summary = 'List Buildings'
-    #swagger.description = 'Retrieve a paginated list of buildings with optional search and filter by branch.'
+    #swagger.description = 'Retrieve a paginated list of buildings with optional search.'
     #swagger.parameters['page'] = { default: 1 }
     #swagger.parameters['limit'] = { default: 10 }
     #swagger.parameters['search'] = { default: '', description: 'name / code' }
-    #swagger.parameters['branch_id'] = { default: '', description: 'filter by branch' }
   */
   try {
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
     const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
-    const { search, branch_id } = req.query;
+    const { search } = req.query;
 
     const query = { is_delete: { $ne: true } };
-    if (branch_id) query.branch_id = branch_id;
     if (search) {
       query["$or"] = [
         { name: { $regex: search, $options: "i" } },
@@ -73,7 +70,6 @@ controller.index = async (req, res, next) => {
 
     const [data, total] = await Promise.all([
       BuildingModel.find(query)
-        .populate("branch_id", "name code")
         .sort({ _id: -1 })
         .skip((page - 1) * limit)
         .limit(limit),
@@ -104,7 +100,7 @@ controller.show = async (req, res, next) => {
     const data = await BuildingModel.findOne({
       _id: id,
       is_delete: { $ne: true },
-    }).populate("branch_id", "name code");
+    });
     if (!data) throw new NotFound(`Data with id '${id}' not found!`);
 
     // Sertakan daftar lantai yang otomatis dibuat.
@@ -137,24 +133,16 @@ controller.create = async (req, res, next) => {
   */
   try {
     const payload = req.body;
-    if (!payload?.branch_id) throw new BadRequest("branch_id is required.");
     if (!payload?.name) throw new BadRequest("Building name is required.");
 
     const totalFloors = Math.max(parseInt(payload.total_floors, 10) || 1, 1);
 
     const result = await runWithOptionalTransaction(async (session) => {
-      const branch = await BranchModel.findOne({
-        _id: payload.branch_id,
-        is_delete: { $ne: true },
-      }).session(session);
-      if (!branch) throw new BadRequest("Branch not found.");
-
       const code = await ensureUniqueBuildingCode(payload.name, session);
 
       const [building] = await BuildingModel.create(
         [
           {
-            branch_id: payload.branch_id,
             code,
             name: payload.name,
             building_type: payload.building_type,

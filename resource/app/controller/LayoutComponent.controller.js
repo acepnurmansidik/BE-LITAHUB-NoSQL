@@ -8,13 +8,6 @@ const LogActionModel = require("../models/LogAction.model");
 
 const controller = {};
 
-// Set flag `status` pada Image (true = dipakai, false = lepas). Aman untuk id
-// null/kosong.
-const setImageStatus = async (imageId, status, session) => {
-  if (!imageId) return;
-  await ImageModel.findOneAndUpdate({ _id: imageId }, { status }, { session });
-};
-
 controller.index = async (req, res, next) => {
   /*
     #swagger.tags = ['Layout Component']
@@ -165,7 +158,7 @@ controller.create = async (req, res, next) => {
         { session },
       );
 
-      await setImageStatus(payload.image_id, true, session);
+      await globalService.setImageStatus(payload.image_id, true, session);
 
       await LogActionModel.create(
         [
@@ -226,8 +219,8 @@ controller.update = async (req, res, next) => {
         const beforeImg = before.image_id ? String(before.image_id) : null;
         const newImg = payload.image_id ?? null;
         if (newImg !== beforeImg) {
-          await setImageStatus(beforeImg, false, session);
-          await setImageStatus(newImg, true, session);
+          await globalService.setImageStatus(beforeImg, false, session);
+          await globalService.setImageStatus(newImg, true, session);
         }
       }
 
@@ -294,7 +287,7 @@ controller.delete = async (req, res, next) => {
       await doc.save({ session });
 
       // Lepas gambar yang terpakai.
-      await setImageStatus(before.image_id, false, session);
+      await globalService.setImageStatus(before.image_id, false, session);
 
       await LogActionModel.findOneAndUpdate(
         { target_id: id },

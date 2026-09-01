@@ -14,7 +14,6 @@ const journalEntryRouter = require("../resource/app/router/journalEntry.routes")
 const accountReceivableRouter = require("../resource/app/router/accountReceivable.routes");
 const accountPayableRouter = require("../resource/app/router/accountPayable.routes");
 const journalWriteOffRouter = require("../resource/app/router/journalWriteOff.routes");
-const branchRouter = require("../resource/app/router/branch.routes");
 const buildingRouter = require("../resource/app/router/building.routes");
 const buildingFloorRouter = require("../resource/app/router/buildingFloor.routes");
 const unitRouter = require("../resource/app/router/unit.routes");
@@ -39,6 +38,8 @@ const uploadRouter = require("../resource/app/router/upload.routes");
 const exportImportRouter = require("../resource/app/router/exportImportFile.routes");
 const utilityFormulaRouter = require("../resource/app/router/utilityFormula.routes");
 const dashboardRouter = require("../resource/app/router/dashboard.routes");
+const waterMeterdRouter = require("../resource/app/router/waterMeter.routes");
+const electricMeterRouter = require("../resource/app/router/electricMeter.routes");
 
 router.use("/app-configs", appConfigRouter);
 router.use("/auth", authRouter);
@@ -55,7 +56,6 @@ router.use("/role", roleRouter);
 router.use("/module", moduleRouter);
 
 // BUILDING / LAYOUT
-router.use("/branch", branchRouter);
 router.use("/building", buildingRouter);
 router.use("/building-floor", buildingFloorRouter);
 router.use("/unit", unitRouter);
@@ -89,6 +89,8 @@ router.use("/upload", uploadRouter);
 router.use("/import-export", exportImportRouter);
 router.use("/dashboard", dashboardRouter);
 router.use("/vehicle-utility", vehicleUtilityRouter);
+router.use("/water-meter", waterMeterdRouter);
+router.use("/electric-meter", electricMeterRouter);
 
 router.use(AuthorizeUserLogin);
 
