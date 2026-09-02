@@ -18,7 +18,7 @@ const buildingRouter = require("../resource/app/router/building.routes");
 const buildingFloorRouter = require("../resource/app/router/buildingFloor.routes");
 const unitRouter = require("../resource/app/router/unit.routes");
 const vehicleRateRouter = require("../resource/app/router/vehicleRate.routes");
-const vehicleUtilityRouter = require("../resource/app/router/vehicleUtility.routes");
+const vehicleRouter = require("../resource/app/router/vehicle.routes");
 const AuthorizeUserLogin = require("../resource/middleware/authentification");
 const LayoutComponentRouter = require("../resource/app/router/layoutComponent.routes");
 const productCategoryRouter = require("../resource/app/router/productCategory.routes");
@@ -40,6 +40,7 @@ const utilityFormulaRouter = require("../resource/app/router/utilityFormula.rout
 const dashboardRouter = require("../resource/app/router/dashboard.routes");
 const waterMeterdRouter = require("../resource/app/router/waterMeter.routes");
 const electricMeterRouter = require("../resource/app/router/electricMeter.routes");
+const ownershipRouter = require("../resource/app/router/ownership.routes");
 
 router.use("/app-configs", appConfigRouter);
 router.use("/auth", authRouter);
@@ -88,9 +89,12 @@ router.use("/delivery-order", deliveryOrderRouter);
 router.use("/upload", uploadRouter);
 router.use("/import-export", exportImportRouter);
 router.use("/dashboard", dashboardRouter);
-router.use("/vehicle-utility", vehicleUtilityRouter);
+router.use("/vehicle", vehicleRouter);
 router.use("/water-meter", waterMeterdRouter);
 router.use("/electric-meter", electricMeterRouter);
+
+// CONTRACT
+router.use("/ownership", ownershipRouter);
 
 router.use(AuthorizeUserLogin);
 

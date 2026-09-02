@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 
-const VehicleUtilitySchema = new mongoose.Schema(
+const VehicleSchema = new mongoose.Schema(
   {
     // VIN atau Vehicle Identification Number
     vin: { type: String, required: true, uppercase: true, unique: true },
@@ -21,10 +21,9 @@ const VehicleUtilitySchema = new mongoose.Schema(
   {
     timestamps: { createdAt: "created_at", updatedAt: "updated_at" },
     versionKey: false,
-    collection: "vehicle_utility",
+    collection: "vehicle",
   },
 );
 
 module.exports =
-  mongoose.models.VehicleUtility ||
-  mongoose.model("VehicleUtility", VehicleUtilitySchema);
+  mongoose.models.Vehicle || mongoose.model("Vehicle", VehicleSchema);

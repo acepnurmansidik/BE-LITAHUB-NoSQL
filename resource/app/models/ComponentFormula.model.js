@@ -25,9 +25,13 @@ const ComponentFormulaSchema = new Schema(
     //                 disimpan di sini, dan OPERATOR penggabungnya dipilih pada
     //                 token ekspresi formula (x_operator di TokenSchema), bukan
     //                 di komponen. Tampilan: "x {operator} rate", mis. "x + 3.2".
+    //  - PERCENTAGE : rate disimpan sebagai ANGKA PERSEN pada `fixed_rate`
+    //                 (mis. 11 = 11%). Saat dipakai di CalculatedFormula, nilai
+    //                 operand efektifnya = fixed_rate / 100 (mis. 0.11), sehingga
+    //                 dipakai sebagai PENGALI (contoh: Subtotal × PPN).
     rate_type: {
       type: String,
-      enum: ["FIXED", "CALCULATED", "EXTERNAL"],
+      enum: ["FIXED", "CALCULATED", "EXTERNAL", "PERCENTAGE"],
       default: "FIXED",
       uppercase: true, // Memastikan data tersimpan sebagai uppercase
     },

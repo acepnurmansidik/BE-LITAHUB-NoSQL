@@ -46,6 +46,13 @@ const TAG_GROUPS = [
     tags: ["Authentication", "User & IAM", "Role", "Module"],
   },
   {
+    name: "CONTRACT",
+    description:
+      "Modul kontrak & kepemilikan unit.\n\n" +
+      "- **Ownership** — data pemilik/penyewa per unit (wajib mereferensikan Unit). CRUD dasar dengan audit log.",
+    tags: ["Ownership"],
+  },
+  {
     name: "BILL",
     tags: ["IPL", "Parking"],
   },

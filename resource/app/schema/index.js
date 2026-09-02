@@ -13,6 +13,7 @@ const VehicleRateSchema = require("./vehicleRate.schema");
 const VehicleUtilitySchema = require("./vehicleUtility.schema");
 const WaterMeterSchema = require("./waterMeter.schema");
 const ElectricMeterSchema = require("./electricMeter.schema");
+const OwnershipSchema = require("./ownership.schema");
 
 const GlobalSchema = {
   ...Authchema.Register,
@@ -32,6 +33,7 @@ const GlobalSchema = {
   ...VehicleUtilitySchema,
   ...WaterMeterSchema,
   ...ElectricMeterSchema,
+  ...OwnershipSchema,
 };
 
 module.exports = GlobalSchema;

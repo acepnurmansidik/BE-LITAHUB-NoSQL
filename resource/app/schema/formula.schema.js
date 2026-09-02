@@ -1,8 +1,10 @@
 const FormulaSchema = {
-  // rate_type: FIXED | CALCULATED | EXTERNAL.
+  // rate_type: FIXED | CALCULATED | EXTERNAL | PERCENTAGE.
   // EXTERNAL → komponen hanya menyimpan rate (calculated_rate). Nilai luar "x"
   // & operator penggabungnya ditentukan pada token ekspresi CalculatedFormula
   // (lihat x_operator pada token), bukan di sini.
+  // PERCENTAGE → angka persen disimpan di fixed_rate (mis. 11 = 11%). Nilai
+  // operand efektif di CalculatedFormula = fixed_rate / 100 (dipakai sbg pengali).
   BodyComponentFormulaSchema: {
     name: "base tax",
     rate_type: "FIXED",

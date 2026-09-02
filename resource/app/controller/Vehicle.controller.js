@@ -4,10 +4,10 @@ const NotFound = require("../../utils/errors/not-found");
 const LogActionModel = require("../models/LogAction.model");
 const UnitModel = require("../models/Unit.model");
 const VehicleRateModel = require("../models/VehicleRate.model");
-const VehicleUtilityModel = require("../models/VehicleUtility.model");
+const VehicleModel = require("../models/Vehicle.model");
 
 const controller = {};
-const source = VehicleUtilityModel.collection.collectionName;
+const source = VehicleModel.collection.collectionName;
 
 controller.index = async (req, res, next) => {
   /*
@@ -32,13 +32,22 @@ controller.index = async (req, res, next) => {
       ];
     }
 
+    const populateField = [
+      {
+        path: "rate_id",
+        model: "VehicleRate",
+        select: "_id name rate",
+      },
+    ];
+
     const [data, total] = await Promise.all([
-      VehicleUtilityModel.find(query)
+      VehicleModel.find(query)
+        .populate(populateField)
         .sort({ _id: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .lean(),
-      VehicleUtilityModel.countDocuments(query),
+      VehicleModel.countDocuments(query),
     ]);
 
     res.status(200).json({
@@ -62,7 +71,7 @@ controller.show = async (req, res, next) => {
   try {
     const { id } = req.params;
 
-    const data = await VehicleUtilityModel.findOne({
+    const data = await VehicleModel.findOne({
       _id: id,
       is_delete: { $ne: true },
     });
@@ -92,7 +101,7 @@ controller.create = async (req, res, next) => {
 
     const result = await runWithOptionalTransaction(async (session) => {
       const [docVin, unit, rate] = await Promise.all([
-        VehicleUtilityModel.findOne({
+        VehicleModel.findOne({
           vin: { $regex: payload.vin, $options: "i" },
           is_delete: { $ne: true },
         }),
@@ -109,7 +118,7 @@ controller.create = async (req, res, next) => {
       if (!rate)
         throw new NotFound(`data with id '${payload.rate_id}' not found`);
 
-      const [data] = await VehicleUtilityModel.create([payload], { session });
+      const [data] = await VehicleModel.create([payload], { session });
       await LogActionModel.create(
         [
           {
@@ -156,8 +165,8 @@ controller.update = async (req, res, next) => {
 
     const result = await runWithOptionalTransaction(async (session) => {
       const [doc, vinExist, unit, rate] = await Promise.all([
-        VehicleUtilityModel.findOne({ _id: id, is_delete: { $ne: true } }),
-        VehicleUtilityModel.findOne({
+        VehicleModel.findOne({ _id: id, is_delete: { $ne: true } }),
+        VehicleModel.findOne({
           vin: { $regex: payload.vin, $options: "i" },
           unit_id: { $ne: payload.unit_id },
           is_delete: { $ne: true },
@@ -223,7 +232,7 @@ controller.delete = async (req, res, next) => {
     const { id } = req.params;
 
     const result = await runWithOptionalTransaction(async (session) => {
-      const doc = await VehicleUtilityModel.findOne({
+      const doc = await VehicleModel.findOne({
         _id: id,
         is_delete: { $ne: true },
       });
