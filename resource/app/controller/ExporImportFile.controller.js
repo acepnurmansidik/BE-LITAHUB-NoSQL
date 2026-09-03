@@ -17,6 +17,7 @@
 const xlsx = require("xlsx");
 const BadRequest = require("../../utils/errors/bad-request");
 const globalService = require("../../helper/global-func");
+const { generateSequenceNo } = require("../../helper/sequence");
 
 const ProductModel = require("../models/Product.model");
 const ProductCategoryModel = require("../models/ProductCategory.model");
@@ -36,6 +37,16 @@ const AccountPayableModel = require("../models/AccountPayable.model");
 const ChartOfAccountModel = require("../models/ChartOfAccount.model");
 const DetailProductItemModel = require("../models/DetailProductItem.model");
 const SupplierPricingModel = require("../models/SupplierPricing.model");
+// Edifice / Contract / Utility modules.
+const UnitModel = require("../models/Unit.model");
+const BuildingModel = require("../models/Building.model");
+const BuildingFloorModel = require("../models/BuildingFloor.model");
+const OwnershipModel = require("../models/Ownership.model");
+const UserModel = require("../models/users.model");
+const VehicleModel = require("../models/Vehicle.model");
+const VehicleRateModel = require("../models/VehicleRate.model");
+const ElectricMeterModel = require("../models/ElectricMeter.model");
+const WaterMeterModel = require("../models/WaterMeter.model");
 
 const controller = {};
 
@@ -301,6 +312,29 @@ const applyDateFilter = (query, req) => {
   const since = rangeToDate(req.query.range);
   if (since) return query.where("created_at").gte(since);
   return query;
+};
+
+// Build a Map of Unit code(upper) -> { _id, code, name } used to resolve &
+// snapshot units (unit_name) for ownership / meter / vehicle imports.
+const unitByCode = async () => {
+  const docs = await UnitModel.find({ is_delete: { $ne: true } })
+    .select("_id code name")
+    .lean();
+  const m = new Map();
+  for (const d of docs) m.set(upper(d.code), d);
+  return m;
+};
+
+// Build a Map of a collection's `field`(upper) -> the whole lean doc (keeps
+// `_id` + name). Like codeIndex but returns the doc, used to resolve users by
+// name and vehicle rates by name on import.
+const docByField = async (Model, field) => {
+  const docs = await Model.find({ is_delete: { $ne: true } })
+    .select(`_id ${field}`)
+    .lean();
+  const m = new Map();
+  for (const d of docs) m.set(upper(d[field]), d);
+  return m;
 };
 
 // ============================================================
@@ -1712,6 +1746,396 @@ controller.importSupplierPricing = async (req, res, next) => {
   }
 };
 
+// ---- Edifice / Contract / Utility imports.
+
+controller.importUnit = async (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Import Unit from Excel (.xlsx)'
+    #swagger.description = 'Import & upsert Unit by code. building & floor resolve by their code; unit_type / status fall back to defaults when blank. When a unit already exists it is updated, otherwise created.'
+    #swagger.consumes = ['multipart/form-data']
+    #swagger.parameters['file'] = { in: 'formData', type: 'file', required: true, description: 'Excel .xlsx file' }
+  */
+  try {
+    const rows = parseRows(req.file);
+    const [buildingByCode, floorByCode] = await Promise.all([
+      codeIndex(BuildingModel, "code"),
+      codeIndex(BuildingFloorModel, "code"),
+    ]);
+    const UNIT_TYPES = [
+      "room",
+      "bedroom",
+      "guest_room",
+      "dorm_room",
+      "office_space",
+      "meeting_room",
+      "storage",
+      "server_room",
+      "retail_shop",
+      "utility_room",
+      "other",
+    ];
+    const UNIT_STATUS = ["AVAILABLE", "OCCUPIED", "UNDER_MAINTENANCE", "RESERVED"];
+
+    const seen = new Set();
+    const ops = [];
+    const errors = [];
+
+    rows.forEach((row, i) => {
+      const line = i + 2;
+      const code = upper(pick(row, "code", "kode"));
+      const name = norm(pick(row, "name", "nama"));
+      if (!code || !name) {
+        errors.push(`Row ${line}: code & name are required.`);
+        return;
+      }
+      if (seen.has(code)) return; // skip duplicates within the same file
+      seen.add(code);
+
+      const buildingId = buildingByCode.get(
+        upper(pick(row, "building", "building_code")),
+      );
+      const floorId = floorByCode.get(upper(pick(row, "floor", "floor_code")));
+      if (!buildingId || !floorId) {
+        errors.push(`Row ${line}: building/floor not found (${code}).`);
+        return;
+      }
+      const unitType = UNIT_TYPES.includes(
+        norm(pick(row, "unit_type", "type", "tipe")).toLowerCase(),
+      )
+        ? norm(pick(row, "unit_type", "type", "tipe")).toLowerCase()
+        : "bedroom";
+      const status = UNIT_STATUS.includes(upper(pick(row, "status")))
+        ? upper(pick(row, "status"))
+        : "AVAILABLE";
+
+      ops.push({
+        updateOne: {
+          filter: { code },
+          update: {
+            $set: {
+              name,
+              slug: globalService.createSlug(name),
+              building_id: buildingId,
+              floor_id: floorId,
+              unit_type: unitType,
+              status,
+              capacity: num(pick(row, "capacity", "kapasitas")),
+              area_sqm: num(pick(row, "area_sqm", "luas")),
+              notes: norm(pick(row, "notes", "catatan")),
+              is_active: bool(pick(row, "is_active", "aktif")),
+            },
+            $setOnInsert: { code },
+          },
+          upsert: true,
+        },
+      });
+    });
+
+    const summary = await runBulk(UnitModel, ops, errors);
+    res.status(200).json({
+      success: true,
+      message: `Import 'unit' finished: ${summary.inserted} created, ${summary.updated} updated, ${summary.skipped} skipped.`,
+      data: summary,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+controller.importOwnership = async (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Import Ownership from Excel (.xlsx)'
+    #swagger.description = 'Import & upsert Ownership by (unit + owner). unit resolves by code (snapshots unit_name), owner resolves by user name (snapshots owner_name). Same unit+owner is updated, otherwise created.'
+    #swagger.consumes = ['multipart/form-data']
+    #swagger.parameters['file'] = { in: 'formData', type: 'file', required: true, description: 'Excel .xlsx file' }
+  */
+  try {
+    const rows = parseRows(req.file);
+    const [units, usersByName] = await Promise.all([
+      unitByCode(),
+      docByField(UserModel, "name"),
+    ]);
+    const OWNERSHIP_TYPES = ["OWNER", "TENANT"];
+
+    const seen = new Set();
+    const ops = [];
+    const errors = [];
+
+    rows.forEach((row, i) => {
+      const line = i + 2;
+      const unit = units.get(upper(pick(row, "unit", "unit_code", "code")));
+      const user = usersByName.get(upper(pick(row, "owner", "owner_name", "user")));
+      if (!unit) {
+        errors.push(`Row ${line}: unit not found.`);
+        return;
+      }
+      if (!user) {
+        errors.push(`Row ${line}: owner (user) not found.`);
+        return;
+      }
+      const key = `${unit._id}|${user._id}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+
+      const type = OWNERSHIP_TYPES.includes(upper(pick(row, "ownership_type", "type")))
+        ? upper(pick(row, "ownership_type", "type"))
+        : "OWNER";
+
+      ops.push({
+        updateOne: {
+          filter: { unit_id: unit._id, user_ownership_id: user._id },
+          update: {
+            $set: {
+              unit_name: unit.name || unit.code || "",
+              owner_name: user.name,
+              ownership_type: type,
+              identity_number: norm(pick(row, "identity_number", "ktp", "nik")),
+              phone: norm(pick(row, "phone", "telepon")),
+              email: norm(pick(row, "email")).toLowerCase(),
+              address: norm(pick(row, "address", "alamat")),
+              start_date: parseDateTime(pick(row, "start_date", "mulai")),
+              end_date: parseDateTime(pick(row, "end_date", "selesai")),
+              notes: norm(pick(row, "notes", "catatan")),
+              is_active: bool(pick(row, "is_active", "aktif")),
+            },
+            $setOnInsert: {
+              unit_id: unit._id,
+              user_ownership_id: user._id,
+            },
+          },
+          upsert: true,
+        },
+      });
+    });
+
+    const summary = await runBulk(OwnershipModel, ops, errors);
+    res.status(200).json({
+      success: true,
+      message: `Import 'ownership' finished: ${summary.inserted} created, ${summary.updated} updated, ${summary.skipped} skipped.`,
+      data: summary,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Shared body for the two meter imports (Electric & Water share the same shape).
+// Key = (unit + month of date): one reading per unit per month. When it already
+// exists only the meter numbers are updated; otherwise a new record is created
+// (its <prefix>_no is generated, prev/usage derived from the prior reading).
+// Rows are processed date-ascending so prev_meter chains correctly within a file.
+const importMeter = async (req, res, Model, opts) => {
+  const { prefix, noField, moduleLabel } = opts;
+  const rows = parseRows(req.file);
+  const units = await unitByCode();
+  const source = Model.collection.collectionName;
+
+  // Parse + validate up front so we can sort chronologically.
+  const parsed = [];
+  const errors = [];
+  const seen = new Set();
+  rows.forEach((row, i) => {
+    const line = i + 2;
+    const unit = units.get(upper(pick(row, "unit", "unit_code", "code")));
+    if (!unit) {
+      errors.push(`Row ${line}: unit not found.`);
+      return;
+    }
+    const date = parseDateTime(pick(row, "date", "tanggal"));
+    if (!date) {
+      errors.push(`Row ${line}: date is required/invalid.`);
+      return;
+    }
+    const currentRaw = pick(row, "current_meter", "current", "meter");
+    const current = Number(currentRaw);
+    if (currentRaw === "" || Number.isNaN(current)) {
+      errors.push(`Row ${line}: current_meter must be a number.`);
+      return;
+    }
+    const range = globalService.monthRange(date);
+    const key = `${unit._id}|${range.start.getTime()}`;
+    if (seen.has(key)) return; // one reading per unit per month within a file
+    seen.add(key);
+    parsed.push({ unit, date, current, range });
+  });
+
+  parsed.sort((a, b) => a.date - b.date);
+
+  let inserted = 0;
+  let updated = 0;
+  for (const rec of parsed) {
+    const existing = await Model.findOne({
+      unit_id: rec.unit._id,
+      date: { $gte: rec.range.start, $lt: rec.range.end },
+      is_delete: { $ne: true },
+    });
+
+    // prev = current_meter of the latest reading BEFORE this month (0 if none).
+    let prev;
+    if (existing) {
+      prev = existing.prev_meter ?? 0;
+    } else {
+      const last = await Model.findOne({
+        unit_id: rec.unit._id,
+        date: { $lt: rec.range.start },
+        is_delete: { $ne: true },
+      })
+        .sort({ date: -1, _id: -1 })
+        .lean();
+      prev = last?.current_meter ?? 0;
+    }
+
+    if (rec.current < prev) {
+      errors.push(
+        `${rec.unit.code}: current_meter (${rec.current}) is below the previous meter (${prev}).`,
+      );
+      continue;
+    }
+    const usage = rec.current - prev;
+
+    if (existing) {
+      existing.current_meter = rec.current;
+      existing.usage_meter = usage;
+      existing.actual_meter = usage;
+      await existing.save();
+      updated += 1;
+    } else {
+      const no = await generateSequenceNo({
+        module: source,
+        prefix: `${prefix}.${rec.unit.name}`,
+        date: rec.date,
+      });
+      await Model.create({
+        unit_id: rec.unit._id,
+        [noField]: no,
+        unit_name: rec.unit.name,
+        prev_meter: prev,
+        current_meter: rec.current,
+        usage_meter: usage,
+        actual_meter: usage,
+        date: rec.date,
+        status: "OPEN",
+      });
+      inserted += 1;
+    }
+  }
+
+  const summary = {
+    total_rows: parsed.length + errors.length,
+    inserted,
+    updated,
+    skipped: errors.length,
+    errors: errors.slice(0, 50),
+  };
+  res.status(200).json({
+    success: true,
+    message: `Import '${moduleLabel}' finished: ${summary.inserted} created, ${summary.updated} updated, ${summary.skipped} skipped.`,
+    data: summary,
+  });
+};
+
+controller.importElectricMeter = (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Import Electric Meter from Excel (.xlsx)'
+    #swagger.description = 'Import & upsert Electric Meter by (unit + month). unit resolves by code; prev/usage are derived from the prior reading and electricity_no is generated on create. One reading per unit per month.'
+    #swagger.consumes = ['multipart/form-data']
+    #swagger.parameters['file'] = { in: 'formData', type: 'file', required: true, description: 'Excel .xlsx file' }
+  */
+  importMeter(req, res, ElectricMeterModel, {
+    prefix: "ELC",
+    noField: "electricity_no",
+    moduleLabel: "electric-meter",
+  }).catch(next);
+};
+
+controller.importWaterMeter = (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Import Water Meter from Excel (.xlsx)'
+    #swagger.description = 'Import & upsert Water Meter by (unit + month). unit resolves by code; prev/usage are derived from the prior reading and water_no is generated on create. One reading per unit per month.'
+    #swagger.consumes = ['multipart/form-data']
+    #swagger.parameters['file'] = { in: 'formData', type: 'file', required: true, description: 'Excel .xlsx file' }
+  */
+  importMeter(req, res, WaterMeterModel, {
+    prefix: "WTR",
+    noField: "water_no",
+    moduleLabel: "water-meter",
+  }).catch(next);
+};
+
+controller.importVehicle = async (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Import Vehicle Utility from Excel (.xlsx)'
+    #swagger.description = 'Import & upsert Vehicle by vin. unit resolves by code (snapshots unit_name), rate resolves by rate name. Same vin is updated, otherwise created.'
+    #swagger.consumes = ['multipart/form-data']
+    #swagger.parameters['file'] = { in: 'formData', type: 'file', required: true, description: 'Excel .xlsx file' }
+  */
+  try {
+    const rows = parseRows(req.file);
+    const [units, ratesByName] = await Promise.all([
+      unitByCode(),
+      docByField(VehicleRateModel, "name"),
+    ]);
+
+    const seen = new Set();
+    const ops = [];
+    const errors = [];
+
+    rows.forEach((row, i) => {
+      const line = i + 2;
+      const vin = upper(pick(row, "vin", "vehicle_identifier"));
+      const vehicleType = upper(pick(row, "vehicle_type", "type", "tipe"));
+      if (!vin || !vehicleType) {
+        errors.push(`Row ${line}: vin & vehicle_type are required.`);
+        return;
+      }
+      if (seen.has(vin)) return;
+      seen.add(vin);
+
+      const unit = units.get(upper(pick(row, "unit", "unit_code", "code")));
+      const rate = ratesByName.get(upper(pick(row, "rate", "rate_name")));
+      if (!unit) {
+        errors.push(`Row ${line}: unit not found (${vin}).`);
+        return;
+      }
+      if (!rate) {
+        errors.push(`Row ${line}: rate not found (${vin}).`);
+        return;
+      }
+
+      ops.push({
+        updateOne: {
+          filter: { vin },
+          update: {
+            $set: {
+              vehicle_type: vehicleType,
+              unit_id: unit._id,
+              unit_name: unit.name || unit.code || "",
+              rate_id: rate._id,
+              is_active: bool(pick(row, "is_active", "aktif")),
+            },
+            $setOnInsert: { vin },
+          },
+          upsert: true,
+        },
+      });
+    });
+
+    const summary = await runBulk(VehicleModel, ops, errors);
+    res.status(200).json({
+      success: true,
+      message: `Import 'vehicle' finished: ${summary.inserted} created, ${summary.updated} updated, ${summary.skipped} skipped.`,
+      data: summary,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ============================================================
 // EXPORT handlers — one endpoint = one self-contained function. Each builds its
 // own query + populate + row map, then applies the shared created_at filter.
@@ -2482,6 +2906,201 @@ controller.exportSupplierPricing = async (req, res, next) => {
         uom: refField(d.uom_id, "code"),
         barcode: d.barcode,
         price: d.price,
+        is_active: d.is_active,
+        created_at: d.created_at,
+      }),
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Data retrieved successfully!",
+      data,
+      page_size: data.length,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---- Edifice / Contract / Utility exports.
+
+controller.exportUnit = async (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Export Unit as JSON rows'
+    #swagger.description = 'Return flattened Unit rows filtered by created_at. building/floor returned as their code. Date fields returned as DD/MM/YYYY HH:mm.'
+    #swagger.parameters['range'] = { in: 'query', type: 'string', description: '7d | 1m | 1y' }
+    #swagger.parameters['start_date'] = { in: 'query', type: 'string', description: 'ISO date (custom range start)' }
+    #swagger.parameters['end_date'] = { in: 'query', type: 'string', description: 'ISO date (custom range end)' }
+  */
+  try {
+    const query = UnitModel.find({ is_delete: { $ne: true } })
+      .populate("building_id", "code name")
+      .populate("floor_id", "code name");
+    const docs = await applyDateFilter(query, req)
+      .sort({ created_at: -1 })
+      .lean();
+
+    const data = docs.map((d) =>
+      formatRowDates({
+        code: d.code,
+        name: d.name,
+        building: refField(d.building_id, "code"),
+        floor: refField(d.floor_id, "code"),
+        unit_type: d.unit_type,
+        status: d.status,
+        capacity: d.capacity,
+        area_sqm: d.area_sqm,
+        is_active: d.is_active,
+        notes: d.notes,
+        created_at: d.created_at,
+      }),
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Data retrieved successfully!",
+      data,
+      page_size: data.length,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+controller.exportOwnership = async (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Export Ownership as JSON rows'
+    #swagger.description = 'Return flattened Ownership rows filtered by created_at. unit returned as its code, owner as the user name. Date fields returned as DD/MM/YYYY HH:mm.'
+    #swagger.parameters['range'] = { in: 'query', type: 'string', description: '7d | 1m | 1y' }
+    #swagger.parameters['start_date'] = { in: 'query', type: 'string', description: 'ISO date (custom range start)' }
+    #swagger.parameters['end_date'] = { in: 'query', type: 'string', description: 'ISO date (custom range end)' }
+  */
+  try {
+    const query = OwnershipModel.find({ is_delete: { $ne: true } }).populate(
+      "unit_id",
+      "code name",
+    );
+    const docs = await applyDateFilter(query, req)
+      .sort({ created_at: -1 })
+      .lean();
+
+    const data = docs.map((d) =>
+      formatRowDates({
+        unit: refField(d.unit_id, "code"),
+        owner: d.owner_name,
+        ownership_type: d.ownership_type,
+        identity_number: d.identity_number,
+        phone: d.phone,
+        email: d.email,
+        address: d.address,
+        start_date: d.start_date,
+        end_date: d.end_date,
+        is_active: d.is_active,
+        notes: d.notes,
+        created_at: d.created_at,
+      }),
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Data retrieved successfully!",
+      data,
+      page_size: data.length,
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Shared body for the two meter exports (Electric & Water share the same shape).
+const exportMeter = async (req, res, Model, noField) => {
+  const query = Model.find({ is_delete: { $ne: true } }).populate(
+    "unit_id",
+    "code name",
+  );
+  const docs = await applyDateFilter(query, req).sort({ created_at: -1 }).lean();
+
+  const data = docs.map((d) =>
+    formatRowDates({
+      [noField]: d[noField],
+      unit: refField(d.unit_id, "code"),
+      unit_name: d.unit_name,
+      prev_meter: d.prev_meter,
+      current_meter: d.current_meter,
+      usage_meter: d.usage_meter,
+      actual_meter: d.actual_meter,
+      date: d.date,
+      status: d.status,
+      created_at: d.created_at,
+    }),
+  );
+
+  res.status(200).json({
+    success: true,
+    message: "Data retrieved successfully!",
+    data,
+    page_size: data.length,
+  });
+};
+
+controller.exportElectricMeter = async (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Export Electric Meter as JSON rows'
+    #swagger.description = 'Return flattened Electric Meter rows filtered by created_at. unit returned as its code. Date fields returned as DD/MM/YYYY HH:mm.'
+    #swagger.parameters['range'] = { in: 'query', type: 'string', description: '7d | 1m | 1y' }
+    #swagger.parameters['start_date'] = { in: 'query', type: 'string', description: 'ISO date (custom range start)' }
+    #swagger.parameters['end_date'] = { in: 'query', type: 'string', description: 'ISO date (custom range end)' }
+  */
+  try {
+    await exportMeter(req, res, ElectricMeterModel, "electricity_no");
+  } catch (err) {
+    next(err);
+  }
+};
+
+controller.exportWaterMeter = async (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Export Water Meter as JSON rows'
+    #swagger.description = 'Return flattened Water Meter rows filtered by created_at. unit returned as its code. Date fields returned as DD/MM/YYYY HH:mm.'
+    #swagger.parameters['range'] = { in: 'query', type: 'string', description: '7d | 1m | 1y' }
+    #swagger.parameters['start_date'] = { in: 'query', type: 'string', description: 'ISO date (custom range start)' }
+    #swagger.parameters['end_date'] = { in: 'query', type: 'string', description: 'ISO date (custom range end)' }
+  */
+  try {
+    await exportMeter(req, res, WaterMeterModel, "water_no");
+  } catch (err) {
+    next(err);
+  }
+};
+
+controller.exportVehicle = async (req, res, next) => {
+  /*
+    #swagger.tags = ['Export Import']
+    #swagger.summary = 'Export Vehicle Utility as JSON rows'
+    #swagger.description = 'Return flattened Vehicle rows filtered by created_at. unit returned as its code, rate as the rate name. Date fields returned as DD/MM/YYYY HH:mm.'
+    #swagger.parameters['range'] = { in: 'query', type: 'string', description: '7d | 1m | 1y' }
+    #swagger.parameters['start_date'] = { in: 'query', type: 'string', description: 'ISO date (custom range start)' }
+    #swagger.parameters['end_date'] = { in: 'query', type: 'string', description: 'ISO date (custom range end)' }
+  */
+  try {
+    const query = VehicleModel.find({ is_delete: { $ne: true } })
+      .populate("unit_id", "code name")
+      .populate("rate_id", "name rate");
+    const docs = await applyDateFilter(query, req)
+      .sort({ created_at: -1 })
+      .lean();
+
+    const data = docs.map((d) =>
+      formatRowDates({
+        vin: d.vin,
+        vehicle_type: d.vehicle_type,
+        unit: refField(d.unit_id, "code"),
+        unit_name: d.unit_name,
+        rate: refField(d.rate_id, "name"),
         is_active: d.is_active,
         created_at: d.created_at,
       }),

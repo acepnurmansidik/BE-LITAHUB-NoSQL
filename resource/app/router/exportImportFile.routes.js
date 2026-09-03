@@ -103,6 +103,25 @@ router.post(
   controller.importSupplierPricing,
 );
 
+// IMPORT — edifice / contract / utility modules.
+router.post("/unit/import", upload.single("file"), controller.importUnit);
+router.post(
+  "/ownership/import",
+  upload.single("file"),
+  controller.importOwnership,
+);
+router.post(
+  "/electric-meter/import",
+  upload.single("file"),
+  controller.importElectricMeter,
+);
+router.post(
+  "/water-meter/import",
+  upload.single("file"),
+  controller.importWaterMeter,
+);
+router.post("/vehicle/import", upload.single("file"), controller.importVehicle);
+
 // EXPORT — master, stock, & procurement.
 router.get("/product/export", controller.exportProduct);
 router.get("/product-category/export", controller.exportProductCategory);
@@ -125,5 +144,12 @@ router.get("/chart-of-account/export", controller.exportChartOfAccount);
 
 // EXPORT — supplier pricing.
 router.get("/supplier-pricing/export", controller.exportSupplierPricing);
+
+// EXPORT — edifice / contract / utility modules.
+router.get("/unit/export", controller.exportUnit);
+router.get("/ownership/export", controller.exportOwnership);
+router.get("/electric-meter/export", controller.exportElectricMeter);
+router.get("/water-meter/export", controller.exportWaterMeter);
+router.get("/vehicle/export", controller.exportVehicle);
 
 module.exports = router;
