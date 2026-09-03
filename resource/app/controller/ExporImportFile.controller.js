@@ -318,7 +318,7 @@ const applyDateFilter = (query, req) => {
 // snapshot units (unit_name) for ownership / meter / vehicle imports.
 const unitByCode = async () => {
   const docs = await UnitModel.find({ is_delete: { $ne: true } })
-    .select("_id code name")
+    .select("_id code name status")
     .lean();
   const m = new Map();
   for (const d of docs) m.set(upper(d.code), d);
@@ -1847,7 +1847,7 @@ controller.importOwnership = async (req, res, next) => {
   /*
     #swagger.tags = ['Export Import']
     #swagger.summary = 'Import Ownership from Excel (.xlsx)'
-    #swagger.description = 'Import & upsert Ownership by (unit + owner). unit resolves by code (snapshots unit_name), owner resolves by user name (snapshots owner_name). Same unit+owner is updated, otherwise created.'
+    #swagger.description = 'Import & upsert Ownership by (unit + owner). unit resolves by code (snapshots unit_name), owner resolves by user name (snapshots owner_name). Creating a new ownership marks its unit RESERVED; a row whose unit is already RESERVED by a different owner is skipped. Same unit+owner is updated.'
     #swagger.consumes = ['multipart/form-data']
     #swagger.parameters['file'] = { in: 'formData', type: 'file', required: true, description: 'Excel .xlsx file' }
   */
@@ -1859,14 +1859,16 @@ controller.importOwnership = async (req, res, next) => {
     ]);
     const OWNERSHIP_TYPES = ["OWNER", "TENANT"];
 
+    // Parse + validate rows first (dedup by unit+owner within the file).
     const seen = new Set();
-    const ops = [];
+    const records = [];
     const errors = [];
-
     rows.forEach((row, i) => {
       const line = i + 2;
       const unit = units.get(upper(pick(row, "unit", "unit_code", "code")));
-      const user = usersByName.get(upper(pick(row, "owner", "owner_name", "user")));
+      const user = usersByName.get(
+        upper(pick(row, "owner", "owner_name", "user")),
+      );
       if (!unit) {
         errors.push(`Row ${line}: unit not found.`);
         return;
@@ -1879,38 +1881,79 @@ controller.importOwnership = async (req, res, next) => {
       if (seen.has(key)) return;
       seen.add(key);
 
-      const type = OWNERSHIP_TYPES.includes(upper(pick(row, "ownership_type", "type")))
+      const type = OWNERSHIP_TYPES.includes(
+        upper(pick(row, "ownership_type", "type")),
+      )
         ? upper(pick(row, "ownership_type", "type"))
         : "OWNER";
 
-      ops.push({
-        updateOne: {
-          filter: { unit_id: unit._id, user_ownership_id: user._id },
-          update: {
-            $set: {
-              unit_name: unit.name || unit.code || "",
-              owner_name: user.name,
-              ownership_type: type,
-              identity_number: norm(pick(row, "identity_number", "ktp", "nik")),
-              phone: norm(pick(row, "phone", "telepon")),
-              email: norm(pick(row, "email")).toLowerCase(),
-              address: norm(pick(row, "address", "alamat")),
-              start_date: parseDateTime(pick(row, "start_date", "mulai")),
-              end_date: parseDateTime(pick(row, "end_date", "selesai")),
-              notes: norm(pick(row, "notes", "catatan")),
-              is_active: bool(pick(row, "is_active", "aktif")),
-            },
-            $setOnInsert: {
-              unit_id: unit._id,
-              user_ownership_id: user._id,
-            },
-          },
-          upsert: true,
+      records.push({
+        line,
+        unit,
+        user,
+        fields: {
+          unit_name: unit.name || unit.code || "",
+          owner_name: user.name,
+          ownership_type: type,
+          identity_number: norm(pick(row, "identity_number", "ktp", "nik")),
+          phone: norm(pick(row, "phone", "telepon")),
+          email: norm(pick(row, "email")).toLowerCase(),
+          address: norm(pick(row, "address", "alamat")),
+          start_date: parseDateTime(pick(row, "start_date", "mulai")),
+          end_date: parseDateTime(pick(row, "end_date", "selesai")),
+          notes: norm(pick(row, "notes", "catatan")),
+          is_active: bool(pick(row, "is_active", "aktif")),
         },
       });
     });
 
-    const summary = await runBulk(OwnershipModel, ops, errors);
+    let inserted = 0;
+    let updated = 0;
+    for (const rec of records) {
+      const existing = await OwnershipModel.findOne({
+        unit_id: rec.unit._id,
+        user_ownership_id: rec.user._id,
+        is_delete: { $ne: true },
+      });
+
+      if (existing) {
+        // Kepemilikan yang sama -> update field saja (unit tetap RESERVED).
+        existing.set(rec.fields);
+        await existing.save();
+        updated += 1;
+        continue;
+      }
+
+      // Kepemilikan baru: unit yang sudah RESERVED (oleh owner lain) dilewati.
+      if (String(rec.unit.status).toUpperCase() === "RESERVED") {
+        errors.push(
+          `${rec.unit.code}: unit already reserved by another owner (skipped).`,
+        );
+        continue;
+      }
+
+      await OwnershipModel.create({
+        unit_id: rec.unit._id,
+        user_ownership_id: rec.user._id,
+        ...rec.fields,
+      });
+      // Unit otomatis RESERVED; perbarui snapshot agar baris berikutnya di file
+      // yang menunjuk unit sama ikut terlewati.
+      await UnitModel.updateOne(
+        { _id: rec.unit._id },
+        { $set: { status: "RESERVED" } },
+      );
+      rec.unit.status = "RESERVED";
+      inserted += 1;
+    }
+
+    const summary = {
+      total_rows: records.length + errors.length,
+      inserted,
+      updated,
+      skipped: errors.length,
+      errors: errors.slice(0, 50),
+    };
     res.status(200).json({
       success: true,
       message: `Import 'ownership' finished: ${summary.inserted} created, ${summary.updated} updated, ${summary.skipped} skipped.`,
@@ -2980,7 +3023,7 @@ controller.exportOwnership = async (req, res, next) => {
   try {
     const query = OwnershipModel.find({ is_delete: { $ne: true } }).populate(
       "unit_id",
-      "code name",
+      "code name status",
     );
     const docs = await applyDateFilter(query, req)
       .sort({ created_at: -1 })
@@ -2989,6 +3032,7 @@ controller.exportOwnership = async (req, res, next) => {
     const data = docs.map((d) =>
       formatRowDates({
         unit: refField(d.unit_id, "code"),
+        unit_status: refField(d.unit_id, "status"),
         owner: d.owner_name,
         ownership_type: d.ownership_type,
         identity_number: d.identity_number,

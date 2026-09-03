@@ -128,6 +128,12 @@ controller.create = async (req, res, next) => {
         resolveUser(payload.user_ownership_id, session),
       ]);
 
+      // Unit yang sudah RESERVED tidak boleh dipilih lagi.
+      if (String(unit.status).toUpperCase() === "RESERVED")
+        throw new BadRequest(
+          `Unit '${unit.name || unit.code}' is already reserved!`,
+        );
+
       payload.unit_name = payload.unit_name || unit.name || unit.code || "";
       // owner_name selalu diambil dari nama User (bukan dari client).
       payload.owner_name = user.name;
@@ -135,6 +141,10 @@ controller.create = async (req, res, next) => {
       payload.created_by = req?.login?.user_id ?? null;
 
       const [data] = await OwnershipModel.create([payload], { session });
+
+      // Unit otomatis menjadi RESERVED begitu kepemilikannya dibuat.
+      unit.status = "RESERVED";
+      await unit.save({ session });
 
       await LogActionModel.create(
         [
@@ -189,10 +199,29 @@ controller.update = async (req, res, next) => {
 
       const before = doc.toObject();
 
-      // Bila unit diganti, validasi unit baru & sinkronkan unit_name.
+      // Bila unit diganti: validasi unit baru (tidak boleh RESERVED), lepas unit
+      // lama (kembali AVAILABLE) & tandai unit baru RESERVED.
       if (payload.unit_id && String(payload.unit_id) !== String(doc.unit_id)) {
         const unit = await resolveUnit(payload.unit_id, session);
+        if (String(unit.status).toUpperCase() === "RESERVED")
+          throw new BadRequest(
+            `Unit '${unit.name || unit.code}' is already reserved!`,
+          );
         payload.unit_name = payload.unit_name || unit.name || unit.code || "";
+
+        // Lepas unit lama -> AVAILABLE.
+        const oldUnit = await UnitModel.findOne({
+          _id: doc.unit_id,
+          is_delete: { $ne: true },
+        }).session(session ?? null);
+        if (oldUnit) {
+          oldUnit.status = "AVAILABLE";
+          await oldUnit.save({ session });
+        }
+
+        // Tandai unit baru -> RESERVED.
+        unit.status = "RESERVED";
+        await unit.save({ session });
       }
       // Bila user pemilik diganti, validasi & sinkronkan owner_name dari User.
       if (
@@ -262,6 +291,16 @@ controller.delete = async (req, res, next) => {
 
       doc.is_delete = true;
       await doc.save({ session });
+
+      // Kepemilikan dihapus -> unit kembali AVAILABLE.
+      const unit = await UnitModel.findOne({
+        _id: doc.unit_id,
+        is_delete: { $ne: true },
+      }).session(session ?? null);
+      if (unit) {
+        unit.status = "AVAILABLE";
+        await unit.save({ session });
+      }
 
       await LogActionModel.findOneAndUpdate(
         { target_id: id },
