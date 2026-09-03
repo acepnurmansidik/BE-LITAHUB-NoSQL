@@ -7,6 +7,12 @@ const WaterMeterSchema = new mongoose.Schema(
       ref: "Unit",
       required: true,
     },
+    water_no: {
+      type: String,
+      unique: true,
+      uppercase: true,
+      required: true,
+    },
     unit_name: {
       type: String,
       uppercase: true,

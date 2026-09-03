@@ -1,4 +1,5 @@
 const { runWithOptionalTransaction } = require("../../helper/crudService");
+const { generateSequenceNo } = require("../../helper/sequence");
 const globalService = require("../../helper/global-func");
 const BadRequest = require("../../utils/errors/bad-request");
 const NotFound = require("../../utils/errors/not-found");
@@ -41,7 +42,10 @@ controller.index = async (req, res, next) => {
 
     const query = { is_delete: { $ne: true } };
     if (search) {
-      query["$or"] = [{ unit_name: { $regex: search, $options: "i" } }];
+      query["$or"] = [
+        { electricity_no: { $regex: search, $options: "i" } },
+        { unit_name: { $regex: search, $options: "i" } },
+      ];
     }
 
     // Filter bulan & tahun (dari menu misc > filter, hanya bulan & tahun).
@@ -175,6 +179,12 @@ controller.create = async (req, res, next) => {
       payload.usage_meter = currentMeter - prevMeter;
       // actual_meter diset hanya di backend, diambil dari usage_meter.
       payload.actual_meter = payload.usage_meter;
+      payload.electricity_no = await generateSequenceNo({
+        module: source,
+        prefix: `ELC.${unit.name}`,
+        date: payload.date,
+        session,
+      });
 
       const [data] = await ElectricMeterModel.create([payload], { session });
 
@@ -301,6 +311,7 @@ controller.update = async (req, res, next) => {
         }
       }
 
+      delete payload.electricity_no;
       doc.set(payload);
       await doc.save({ session });
 
