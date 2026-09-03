@@ -73,8 +73,8 @@ const UnitSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["available", "occupied", "under_maintenance", "reserved"],
-      default: "available",
+      enum: ["AVAILABLE", "OCCUPIED", "UNDER_MAINTENANCE", "RESERVED"],
+      default: "AVAILABLE",
     },
     capacity: {
       type: Number, // Kapasitas orang dalam ruangan

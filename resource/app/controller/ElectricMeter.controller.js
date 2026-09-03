@@ -50,6 +50,7 @@ controller.index = async (req, res, next) => {
 
     const [data, total] = await Promise.all([
       ElectricMeterModel.find(query)
+        .populate("unit_id", "code name")
         .populate("image_id", "path")
         .sort({ _id: -1 })
         .skip((page - 1) * limit)

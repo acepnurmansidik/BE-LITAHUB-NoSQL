@@ -8,11 +8,15 @@ const { model, Schema } = mongoose;
 // (foreignField: delivery_order_id) via virtual `items` — memakai pola
 // shared-doc yang sama seperti PR/PO/GR, namun tiap baris hanya menempel
 // ke DO ini.
-//  - delivery_no  : nomor auto (DO-YYYYMM-#####),
-//  - warehouse_id : gudang sumber (stok dikurangi dari sini saat dikirim),
-//  - status       : PENDING (default) -> SHIPPED (via aksi "Kirim Barang").
-//                   Saat SHIPPED: stok gudang berkurang & StockMovement OUT
-//                   dibuat. Setelah SHIPPED dokumen dikunci.
+//  - delivery_no    : nomor auto (DO-YYYYMM-#####),
+//  - warehouse_mode : SINGLE   -> semua item diambil dari `warehouse_id` header,
+//                     MULTIPLE -> tiap item punya warehouse_id sendiri (boleh
+//                                 beda-beda gudang dalam satu DO),
+//  - warehouse_id   : gudang sumber default (dipakai saat warehouse_mode SINGLE;
+//                     null saat MULTIPLE),
+//  - status         : PENDING (default) -> SHIPPED (via aksi "Kirim Barang").
+//                     Saat SHIPPED: stok gudang berkurang & StockMovement OUT
+//                     dibuat. Setelah SHIPPED dokumen dikunci.
 // ============================================================
 const DeliveryOrderSchema = new Schema(
   {
@@ -29,11 +33,20 @@ const DeliveryOrderSchema = new Schema(
     recipient: { type: String, default: "", trim: true },
     reference: { type: String, default: "", trim: true },
     description: { type: String, default: "", trim: true },
-    // Gudang sumber — stok item dikurangi dari gudang ini saat DO dikirim.
+    // Gudang sumber default — dipakai saat warehouse_mode SINGLE (stok semua
+    // item dikurangi dari gudang ini). Null saat MULTIPLE.
     warehouse_id: {
       type: Schema.Types.ObjectId,
       ref: "Warehouse",
       default: null,
+    },
+    // SINGLE  -> satu gudang sumber untuk semua item (warehouse_id header),
+    // MULTIPLE -> tiap item menentukan gudang sumbernya sendiri.
+    warehouse_mode: {
+      type: String,
+      enum: ["SINGLE", "MULTIPLE"],
+      default: "SINGLE",
+      uppercase: true,
     },
     status: {
       type: String,

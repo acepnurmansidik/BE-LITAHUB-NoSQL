@@ -733,9 +733,13 @@ const releaseDeliveryOrderStock = async ({ doId, session }) => {
 // ============================================================
 // STOCK (Delivery Order) — rekonsiliasi idempoten pengeluaran barang sebuah DO:
 //  1. Reverse movement OUT lama DO ini (via releaseDeliveryOrderStock),
-//  2. Validasi stok tersedia di gudang sumber cukup untuk SEMUA item (kalau
-//     kurang → throw, tidak ada pengurangan parsial),
-//  3. Buat movement OUT baru per item & kurangi stock position.
+//  2. Resolusi gudang sumber tiap item sesuai warehouse_mode:
+//       SINGLE   -> gudang header (warehouse_id) untuk semua item,
+//       MULTIPLE -> gudang milik masing-masing item (wajib diisi),
+//  3. Validasi stok tersedia cukup untuk SEMUA item (kalau produk tidak ada di
+//     gudang / stok 0 / qty melebihi tersedia → throw, tanpa pengurangan
+//     parsial),
+//  4. Buat movement OUT baru per item & kurangi stock position pada gudangnya.
 // Stok berkurang sejak DO dibuat (status PENDING) — tidak menunggu dikirim.
 // ============================================================
 const reconcileDeliveryOrderStock = async ({ doId, session }) => {
@@ -749,21 +753,43 @@ const reconcileDeliveryOrderStock = async ({ doId, session }) => {
     DeliveryOrderModel.findById(doId).session(session),
   ]);
   if (!deliveryOrder) throw new BadRequest("Delivery order not found.");
-  const warehouseId = deliveryOrder.warehouse_id;
-  if (!warehouseId) throw new BadRequest("Source warehouse is required.");
 
-  // Validasi stok tersedia lebih dulu untuk seluruh item.
+  const mode = String(deliveryOrder.warehouse_mode || "SINGLE").toUpperCase();
+  const headerWarehouse = deliveryOrder.warehouse_id;
+  if (mode === "SINGLE" && !headerWarehouse) {
+    throw new BadRequest("Source warehouse is required.");
+  }
+
+  // Tentukan gudang sumber sebuah item sesuai mode.
+  const warehouseOf = (it) =>
+    mode === "SINGLE" ? headerWarehouse : it.warehouse_id || null;
+
+  // Validasi stok tersedia lebih dulu untuk seluruh item (all-or-nothing).
   for (const it of items) {
     const qty = Number(it.quantity) || 0;
-    if (qty <= 0) continue;
+    const name = it.product_name || "product";
+    if (qty <= 0) {
+      throw new BadRequest(`${name}: quantity must be greater than 0.`);
+    }
+    const wid = warehouseOf(it);
+    if (!wid) {
+      throw new BadRequest(
+        `${name}: source warehouse is required (multi-warehouse mode).`,
+      );
+    }
     const pos = await StockPositionModel.findOne({
       product_id: it.product_id,
-      warehouse_id: warehouseId,
+      warehouse_id: wid,
     }).session(session);
     const available = pos ? Number(pos.quantity) || 0 : 0;
+    if (available <= 0) {
+      throw new BadRequest(
+        `${name} is not available in the selected warehouse (stock 0).`,
+      );
+    }
     if (available < qty) {
       throw new BadRequest(
-        `Insufficient stock for ${it.product_name || "product"}: available ${available}, need ${qty}.`,
+        `Insufficient stock for ${name}: available ${available}, requested ${qty}.`,
       );
     }
   }
@@ -772,14 +798,15 @@ const reconcileDeliveryOrderStock = async ({ doId, session }) => {
   for (const it of items) {
     const qty = Number(it.quantity) || 0;
     if (qty <= 0) continue;
+    const wid = warehouseOf(it);
     await StockPositionModel.updateOne(
-      { product_id: it.product_id, warehouse_id: warehouseId },
+      { product_id: it.product_id, warehouse_id: wid },
       { $inc: { quantity: -qty } },
       { session },
     );
     moves.push({
       product_id: it.product_id,
-      warehouse_id: warehouseId,
+      warehouse_id: wid,
       uom_id: it.uom_id || null,
       delivery_order_id: doId,
       type: "OUT",

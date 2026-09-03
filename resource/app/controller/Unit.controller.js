@@ -9,6 +9,13 @@ const LogActionModel = require("../models/LogAction.model");
 
 const controller = {};
 
+const FILTER_STATUSES = [
+  "AVAILABLE",
+  "OCCUPIED",
+  "UNDER_MAINTENANCE",
+  "RESERVED",
+];
+
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 // Cek apakah nama room sudah dipakai di lantai yang sama (case-insensitive).
@@ -43,18 +50,23 @@ controller.index = async (req, res, next) => {
     const limit = Math.max(parseInt(req.query.limit, 10) || 10, 1);
     const { search, building_id, floor_id, status } = req.query;
 
-    const query = { is_delete: { $ne: true } };
-    if (building_id) query.building_id = building_id;
-    if (floor_id) query.floor_id = floor_id;
-    if (status) query.status = status;
+    const baseQuery = { is_delete: { $ne: true } };
+
     if (search) {
-      query["$or"] = [
+      baseQuery["$or"] = [
         { name: { $regex: search, $options: "i" } },
         { code: { $regex: search, $options: "i" } },
       ];
     }
 
-    const [data, total] = await Promise.all([
+    const query = { ...baseQuery };
+    if (building_id) query.building_id = building_id;
+    if (floor_id) query.floor_id = floor_id;
+    if (status) query.status = status;
+    if (status && FILTER_STATUSES.includes(String(status).toUpperCase())) {
+      query.status = String(status).toUpperCase();
+    }
+    const [data, total, counts] = await Promise.all([
       UnitModel.find(query)
         .populate("building_id", "name code")
         .populate("floor_id", "name code floor_level")
@@ -69,7 +81,21 @@ controller.index = async (req, res, next) => {
         .skip((page - 1) * limit)
         .limit(limit),
       UnitModel.countDocuments(query),
+      UnitModel.aggregate([
+        { $match: baseQuery },
+        { $group: { _id: "$status", count: { $sum: 1 } } },
+      ]),
     ]);
+
+    // { STATUS: jumlah, ... } + total keseluruhan (mengikuti filter search).
+    const status_counts = counts.reduce(
+      (acc, c) => {
+        if (c._id) acc[c._id] = c.count;
+        acc.ALL += c.count;
+        return acc;
+      },
+      { ALL: 0 },
+    );
 
     res.status(200).json({
       success: true,
@@ -77,6 +103,7 @@ controller.index = async (req, res, next) => {
       data,
       page_size: total,
       current_page: page,
+      status_counts,
     });
   } catch (error) {
     next(error);

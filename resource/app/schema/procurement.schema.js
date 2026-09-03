@@ -62,12 +62,17 @@ const ProcurementSchema = {
     recipient: "Gudang Pusat",
     reference: "REF-2026-0001",
     description: "",
+    // SINGLE  -> semua item ambil dari warehouse_id header,
+    // MULTIPLE -> warehouse_id wajib diisi di tiap item (boleh beda gudang).
+    warehouse_mode: "SINGLE",
     warehouse_id: "000000000000000000000000",
     items: [
       {
         product_id: "000000000000000000000000",
         uom_id: "000000000000000000000000",
         quantity: 10,
+        // Dipakai hanya saat warehouse_mode = MULTIPLE.
+        warehouse_id: "000000000000000000000000",
       },
     ],
   },

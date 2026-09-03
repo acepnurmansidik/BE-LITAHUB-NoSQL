@@ -14,7 +14,26 @@ const NotFound = require("../../utils/errors/not-found");
 
 const controller = {};
 const STATUSES = ["PENDING", "SHIPPED"];
+const WAREHOUSE_MODES = ["SINGLE", "MULTIPLE"];
 const MODULE_NAME = DeliveryOrderModel.collection.collectionName;
+
+// Tetapkan gudang sumber tiap baris item sesuai warehouse_mode:
+//  - SINGLE   : semua item memakai gudang header (headerWarehouse),
+//  - MULTIPLE : tiap item memakai warehouse_id-nya sendiri (WAJIB diisi).
+// Mengembalikan array item baru yang sudah ternormalisasi warehouse_id-nya.
+const normalizeDoItems = (rawItems, mode, headerWarehouse) => {
+  const list = Array.isArray(rawItems) ? rawItems : [];
+  return list.map((it, index) => {
+    const warehouse_id =
+      mode === "SINGLE" ? headerWarehouse || null : it.warehouse_id || null;
+    if (mode === "MULTIPLE" && !warehouse_id) {
+      throw new BadRequest(
+        `Item ${index + 1}: source warehouse is required in multi-warehouse mode.`,
+      );
+    }
+    return { ...it, warehouse_id };
+  });
+};
 
 const ITEM_POPULATE = {
   path: "items",
@@ -22,6 +41,7 @@ const ITEM_POPULATE = {
   populate: [
     { path: "product_id", select: "code name" },
     { path: "uom_id", select: "code name" },
+    { path: "warehouse_id", select: "code name" },
   ],
 };
 
@@ -129,7 +149,7 @@ controller.create = async (req, res, next) => {
   /*
     #swagger.tags = ['Delivery Order']
     #swagger.summary = 'Create Delivery Order'
-    #swagger.description = 'Create a standalone delivery order (status PENDING). Source-warehouse stock is reduced immediately on creation and stock-out movements are recorded; rejected if any item exceeds available stock.'
+    #swagger.description = 'Create a standalone delivery order (status PENDING). warehouse_mode SINGLE takes all items from the header warehouse_id; MULTIPLE takes each item from its own warehouse_id (required per item). Source-warehouse stock is reduced immediately on creation and stock-out movements are recorded; rejected if a product is not stocked in the chosen warehouse or the quantity exceeds what is available.'
     #swagger.parameters['obj'] = {
       in: 'body',
       description: 'Create Delivery Order',
@@ -147,13 +167,21 @@ controller.create = async (req, res, next) => {
         throw new BadRequest("Invalid delivery date.");
       }
     }
-    if (!payload.warehouse_id) {
+    const mode = String(payload.warehouse_mode || "SINGLE").toUpperCase();
+    if (!WAREHOUSE_MODES.includes(mode)) {
+      throw new BadRequest("Invalid warehouse mode (SINGLE | MULTIPLE).");
+    }
+    // SINGLE butuh gudang header; MULTIPLE gudang ada di tiap item.
+    if (mode === "SINGLE" && !payload.warehouse_id) {
       throw new BadRequest("Source warehouse is required.");
     }
+    const headerWarehouse = mode === "SINGLE" ? payload.warehouse_id : null;
 
     const result = await runWithOptionalTransaction(async (session) => {
-      // Item DO: hanya butuh product + quantity (tanpa nilai uang).
-      const { items } = await buildDetailProductItems(payload.items, session, {
+      // Item DO: hanya butuh product + quantity (tanpa nilai uang). Gudang
+      // sumber tiap item ditetapkan sesuai mode sebelum divalidasi.
+      const normItems = normalizeDoItems(payload.items, mode, headerWarehouse);
+      const { items } = await buildDetailProductItems(normItems, session, {
         noDuplicate: true,
       });
       const delivery_no = await generateSequenceNo({
@@ -172,7 +200,8 @@ controller.create = async (req, res, next) => {
             recipient: String(payload.recipient ?? "").trim(),
             reference: String(payload.reference ?? "").trim(),
             description: String(payload.description ?? "").trim(),
-            warehouse_id: payload.warehouse_id,
+            warehouse_id: headerWarehouse,
+            warehouse_mode: mode,
             status: "PENDING",
             created_by: req?.login?.user_id ?? null,
           },
@@ -275,18 +304,33 @@ controller.update = async (req, res, next) => {
       if (payload.description !== undefined) {
         doc.description = String(payload.description).trim();
       }
-      if (payload.warehouse_id !== undefined) {
-        if (!payload.warehouse_id) {
-          throw new BadRequest("Source warehouse is required.");
+      if (payload.warehouse_mode !== undefined) {
+        const m = String(payload.warehouse_mode).toUpperCase();
+        if (!WAREHOUSE_MODES.includes(m)) {
+          throw new BadRequest("Invalid warehouse mode (SINGLE | MULTIPLE).");
         }
-        doc.warehouse_id = payload.warehouse_id;
+        doc.warehouse_mode = m;
+      }
+      if (payload.warehouse_id !== undefined) {
+        doc.warehouse_id = payload.warehouse_id || null;
+      }
+      // Jaga konsistensi header sesuai mode terkini.
+      if (doc.warehouse_mode === "SINGLE" && !doc.warehouse_id) {
+        throw new BadRequest("Source warehouse is required.");
+      }
+      if (doc.warehouse_mode === "MULTIPLE") {
+        doc.warehouse_id = null;
       }
       if (payload.items !== undefined) {
-        const { items } = await buildDetailProductItems(
+        // Tetapkan gudang tiap item sesuai mode final dokumen.
+        const normItems = normalizeDoItems(
           payload.items,
-          session,
-          { noDuplicate: true },
+          doc.warehouse_mode,
+          doc.warehouse_id,
         );
+        const { items } = await buildDetailProductItems(normItems, session, {
+          noDuplicate: true,
+        });
         await syncDetailProductItems({
           parentField: "delivery_order_id",
           parentId: doc._id,
